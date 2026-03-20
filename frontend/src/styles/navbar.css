@@ -1,0 +1,72 @@
+/* navbar.css */
+.navbar {
+  display: flex;
+  align-items: center;
+  background-color: #1a2035;
+  padding: 0 24px;
+  height: 56px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 32px;
+  min-width: fit-content;
+}
+
+.brand-icon {
+  font-size: 20px;
+  color: #f5a623;
+}
+
+.brand-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+.navbar-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.nav-item.active {
+  background: #2c4ecf;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(44, 78, 207, 0.4);
+}
+
+.nav-icon {
+  font-size: 15px;
+}

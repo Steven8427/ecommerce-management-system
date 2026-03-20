@@ -1,0 +1,8 @@
+node_modules/
+vendor/
+runtime/
+*.zip
+.env
+.idea/
+.vscode/
+.claude/
