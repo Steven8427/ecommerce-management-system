@@ -308,22 +308,22 @@ function PrintPreviewModal({ order, onClose }) {
 <html><head><meta charset="utf-8"/><title>客户清单 #${order.id}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;padding:40px;color:#222}
-h2{text-align:center;font-size:24px;margin-bottom:6px}
-.sub{text-align:center;color:#666;font-size:14px;margin-bottom:16px}
-hr{border:none;border-top:2px solid #333;margin:12px 0 20px}
-.info{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;font-size:14px;line-height:1.8}
-.info strong{display:inline-block;width:80px}
-table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px}
-th{background:#f5f6fa;padding:10px 12px;text-align:left;font-weight:700;border:1px solid #ddd}
-td{padding:10px 12px;border:1px solid #ddd}
-.summary{background:#f9f9fb;padding:16px 20px;border-radius:6px;font-size:14px}
-.row{display:flex;justify-content:space-between;margin-bottom:6px}
-.total{display:flex;justify-content:space-between;font-weight:700;font-size:16px;border-top:1px solid #ddd;padding-top:10px;margin-top:6px}
-.actual{display:flex;justify-content:space-between;color:#27ae60;font-weight:600;margin-top:6px}
-.ft{margin-top:24px;font-size:12px;color:#999}
-@page{size:landscape;margin:15mm}
-@media print{body{padding:10px}}
+body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;padding:30px;color:#222;min-height:100vh;display:flex;flex-direction:column}
+h2{text-align:center;font-size:22px;margin-bottom:4px}
+.sub{text-align:center;color:#666;font-size:13px;margin-bottom:12px}
+hr{border:none;border-top:2px solid #333;margin:10px 0 16px}
+.info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;font-size:13px;line-height:1.7}
+.info strong{display:inline-block;width:70px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+th{background:#f5f6fa;padding:8px 10px;text-align:left;font-weight:700;border:1px solid #ddd}
+td{padding:8px 10px;border:1px solid #ddd}
+.summary{background:#f9f9fb;padding:12px 16px;border-radius:6px;font-size:13px}
+.row{display:flex;justify-content:space-between;margin-bottom:4px}
+.total{display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:4px}
+.actual{display:flex;justify-content:space-between;color:#27ae60;font-weight:600;margin-top:4px}
+.bottom-section{margin-top:auto;padding-top:16px;display:flex;justify-content:space-between;align-items:flex-start;page-break-inside:avoid;break-inside:avoid}
+@page{size:landscape;margin:10mm}
+@media print{body{padding:8px}}
 </style></head><body>
 <h2>视觉创印广告物料制作清单</h2>
 <p class="sub">订单号：#${order.id}</p><hr/>
@@ -339,11 +339,13 @@ ${items.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#aaa"
 <div class="total"><span>应收总计：</span><span>${fmt(total)}</span></div>
 <div class="actual"><span>实收金额：</span><span>${fmt(actual)}</span></div>
 </div>
-${notes ? `<div style="margin-top:20px;font-size:14px"><strong>备注：</strong>${notes}</div>` : ''}
-<div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-start">
-<div style="flex-shrink:0">${enabledQRCodes.length > 0 ? `<div style="display:flex;gap:10px">${enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">💳 扫码支付</div><img src="${qr.url}" style="width:160px;height:160px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/><p style="font-size:11px;color:#666;margin-top:2px">${qr.name}</p></div>`).join('')}</div>` : ''}</div>
-<div style="flex:1;display:flex;justify-content:center">${imageUrl && showOrderImage ? `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">📷 订单图片</div><img src="${imageUrl}" style="max-width:160px;max-height:160px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/></div>` : ''}</div>
-<div style="align-self:flex-end;display:flex;align-items:baseline;gap:8px;flex-shrink:0"><span style="font-size:14px;font-weight:600;white-space:nowrap">客户签字：</span><div style="border-bottom:1px solid #333;width:180px"></div></div>
+${notes ? `<div style="margin-top:16px;font-size:13px"><strong>备注：</strong>${notes}</div>` : ''}
+<div class="bottom-section">
+<div style="display:flex;gap:20px;align-items:flex-start">
+${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">💳 扫码支付</div><img src="${qr.url}" style="width:180px;height:180px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/><p style="font-size:11px;color:#666;margin-top:3px">${qr.name}</p></div>`).join('') : ''}
+${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px"><div style="font-size:12px;font-weight:600;margin-bottom:4px">📷 订单图片</div><img src="${imageUrl}" style="width:180px;height:180px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/></div>` : ''}
+</div>
+<div style="display:flex;align-items:flex-end;height:200px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600;white-space:nowrap">客户签字：</span><div style="border-bottom:1px solid #333;width:160px"></div></div></div>
 </div>
 </body></html>`;
     const win = window.open('', '_blank', 'width=800,height=900');
@@ -453,41 +455,31 @@ ${notes ? `<div style="margin-top:20px;font-size:14px"><strong>备注：</strong
             </div>
           )}
 
-          {/* 底部：扫码左边，订单图片中间，客户签字右下 */}
-          <div style={{ marginTop: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            {/* 左 - 扫码支付 */}
-            <div style={{ flexShrink: 0 }}>
-              {enabledQRCodes.length > 0 && (
-                <div>
-                  <div style={{ display: 'flex', gap: 16 }}>
-                    {enabledQRCodes.map(qr => (
-                      <div key={qr.id} style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>💳 扫码支付</div>
-                        <img
-                          src={qr.url}
-                          alt={qr.name}
-                          style={{ width: 160, height: 160, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
-                        />
-                        <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>{qr.name}</p>
-                      </div>
-                    ))}
-                  </div>
+          {/* 底部：左对齐图片 + 右下签字 */}
+          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+              {enabledQRCodes.length > 0 && enabledQRCodes.map(qr => (
+                <div key={qr.id} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>💳 扫码支付</div>
+                  <img src={qr.url} alt={qr.name}
+                    style={{ width: 180, height: 180, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
+                  <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 3 }}>{qr.name}</p>
                 </div>
-              )}
-            </div>
-            {/* 中 - 订单图片 */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+              ))}
               {imageUrl && showOrderImage && (
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📷 订单图片</div>
-                  <img src={imageUrl} alt="订单图片" style={{ maxWidth: 160, maxHeight: 160, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
+                <div style={{ textAlign: 'center', marginLeft: 20 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>📷 订单图片</div>
+                  <img src={imageUrl} alt="订单图片"
+                    style={{ width: 180, height: 180, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
                 </div>
               )}
             </div>
             {/* 右 - 客户签字 */}
-            <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>客户签字：</span>
-              <div style={{ borderBottom: '1px solid #333', width: 180 }}></div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', height: 200 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>客户签字：</span>
+                <div style={{ borderBottom: '1px solid #333', width: 160 }}></div>
+              </div>
             </div>
           </div>
         </div>
