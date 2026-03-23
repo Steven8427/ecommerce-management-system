@@ -5,15 +5,23 @@ import { useToast } from './Toast';
 const fmt = v => '\u00a5' + parseFloat(v || 0).toFixed(2);
 
 // ============================================================================
-// QR Code Helper - localStorage
+// QR Code Helper - 按用户隔离存储
 // ============================================================================
+function getCurrentUserId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('auth_user') || '{}');
+    return user.id || 'default';
+  } catch { return 'default'; }
+}
 function loadQRCodes() {
   try {
-    return JSON.parse(localStorage.getItem('payment_qrcodes') || '[]');
+    const uid = getCurrentUserId();
+    return JSON.parse(localStorage.getItem(`payment_qrcodes_${uid}`) || '[]');
   } catch { return []; }
 }
 function saveQRCodes(list) {
-  localStorage.setItem('payment_qrcodes', JSON.stringify(list));
+  const uid = getCurrentUserId();
+  localStorage.setItem(`payment_qrcodes_${uid}`, JSON.stringify(list));
 }
 
 // ============================================================================
@@ -275,26 +283,26 @@ function PrintPreviewModal({ order, onClose }) {
   const total = parseFloat(order.total_amount || order.subtotal || subtotal);
   const actual = parseFloat(order.actual_amount || 0);
   const notes = order.description || order.notes || '';
-  const imageUrl = order.image || '';
-  const printTime = new Date().toLocaleString('zh-CN');
 
-  // Get enabled QR codes
-  const enabledQRCodes = loadQRCodes().filter(q => q.enabled);
+  // 确保图片URL是绝对路径
+  const rawImage = order.image || '';
+  // 图片URL：用当前页面的origin（经过proxy），而不是直接连后端端口
+  // 这样无论从 localhost:3000 还是 192.168.0.107:3000 都能正确加载
+  const imageUrl = rawImage && !rawImage.startsWith('http') && !rawImage.startsWith('blob')
+    ? `${window.location.origin}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`
+    : rawImage;
+
+  // QR codes - 每次打印可以单独选择
+  const allQRCodes = loadQRCodes();
+  const [selectedQRIds, setSelectedQRIds] = useState(() => allQRCodes.filter(q => q.enabled).map(q => q.id));
+  const toggleQR = (id) => {
+    setSelectedQRIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+  const enabledQRCodes = allQRCodes.filter(q => selectedQRIds.includes(q.id));
+  const [showOrderImage, setShowOrderImage] = useState(true);
 
   const handlePrint = () => {
-    // Build order images HTML
-    const orderImagesHtml = imageUrl
-      ? `<div style="margin-top:24px"><h3 style="font-size:16px;margin-bottom:12px;border-bottom:1px solid #ddd;padding-bottom:8px">📷 订单图片</h3><div style="text-align:center"><img src="${imageUrl}" style="max-width:300px;max-height:300px;border:1px solid #ddd;border-radius:4px"/></div></div>`
-      : '';
-
-    // Build QR codes HTML
-    let qrHtml = '';
-    if (enabledQRCodes.length > 0) {
-      const qrItems = enabledQRCodes.map(qr =>
-        `<div style="text-align:center"><img src="${qr.url}" style="width:160px;height:160px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/><p style="font-size:13px;color:#666;margin-top:6px;font-weight:600">${qr.name}</p></div>`
-      ).join('');
-      qrHtml = `<div style="margin-top:24px"><h3 style="font-size:16px;margin-bottom:12px;border-bottom:1px solid #ddd;padding-bottom:8px">💳 扫码支付</h3><div style="display:flex;justify-content:center;gap:30px;flex-wrap:wrap;padding:10px 0">${qrItems}</div><p style="text-align:center;font-size:13px;color:#666;margin-top:8px">请扫描上方二维码完成支付</p></div>`;
-    }
+    // QR and image are now in the bottom flex row
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><title>客户清单 #${order.id}</title>
@@ -314,7 +322,8 @@ td{padding:10px 12px;border:1px solid #ddd}
 .total{display:flex;justify-content:space-between;font-weight:700;font-size:16px;border-top:1px solid #ddd;padding-top:10px;margin-top:6px}
 .actual{display:flex;justify-content:space-between;color:#27ae60;font-weight:600;margin-top:6px}
 .ft{margin-top:24px;font-size:12px;color:#999}
-@media print{body{padding:20px}}
+@page{size:landscape;margin:15mm}
+@media print{body{padding:10px}}
 </style></head><body>
 <h2>视觉创印广告物料制作清单</h2>
 <p class="sub">订单号：#${order.id}</p><hr/>
@@ -331,9 +340,11 @@ ${items.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#aaa"
 <div class="actual"><span>实收金额：</span><span>${fmt(actual)}</span></div>
 </div>
 ${notes ? `<div style="margin-top:20px;font-size:14px"><strong>备注：</strong>${notes}</div>` : ''}
-${orderImagesHtml}
-${qrHtml}
-<p class="ft">打印时间：${printTime}</p>
+<div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-start">
+<div style="flex-shrink:0">${enabledQRCodes.length > 0 ? `<div style="display:flex;gap:10px">${enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">💳 扫码支付</div><img src="${qr.url}" style="width:160px;height:160px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/><p style="font-size:11px;color:#666;margin-top:2px">${qr.name}</p></div>`).join('')}</div>` : ''}</div>
+<div style="flex:1;display:flex;justify-content:center">${imageUrl && showOrderImage ? `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">📷 订单图片</div><img src="${imageUrl}" style="max-width:160px;max-height:160px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/></div>` : ''}</div>
+<div style="align-self:flex-end;display:flex;align-items:baseline;gap:8px;flex-shrink:0"><span style="font-size:14px;font-weight:600;white-space:nowrap">客户签字：</span><div style="border-bottom:1px solid #333;width:180px"></div></div>
+</div>
 </body></html>`;
     const win = window.open('', '_blank', 'width=800,height=900');
     win.document.write(html);
@@ -345,8 +356,38 @@ ${qrHtml}
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" style={{ maxWidth: 900 }} onClick={e => e.stopPropagation()}>
-        <div className="no-print" style={{ marginBottom: 16 }}>
+        <div className="no-print" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={handlePrint}>打印</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, flexWrap: 'wrap' }}>
+            {allQRCodes.length > 0 && (
+              <>
+                <span style={{ color: 'var(--text-light)' }}>收款码：</span>
+                {allQRCodes.map(qr => (
+                  <label key={qr.id} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedQRIds.includes(qr.id)}
+                      onChange={() => toggleQR(qr.id)}
+                    />
+                    {qr.name}
+                  </label>
+                ))}
+              </>
+            )}
+            {imageUrl && (
+              <>
+                <span style={{ color: 'var(--text-light)', marginLeft: allQRCodes.length > 0 ? 8 : 0 }}>订单图片：</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={showOrderImage}
+                    onChange={() => setShowOrderImage(prev => !prev)}
+                  />
+                  显示
+                </label>
+              </>
+            )}
+          </div>
         </div>
         <button className="close-btn" onClick={onClose}>&times;</button>
 
@@ -412,44 +453,42 @@ ${qrHtml}
             </div>
           )}
 
-          {/* 订单图片 - 独立区域 */}
-          {imageUrl && (
-            <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
-              <h3 style={{ fontSize: 15, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                📷 订单图片
-              </h3>
-              <div style={{ textAlign: 'center' }}>
-                <img src={imageUrl} alt="订单图片" style={{ maxWidth: 300, maxHeight: 300, border: '1px solid var(--border)', borderRadius: 6 }} />
-              </div>
-            </div>
-          )}
-
-          {/* 收款二维码 - 独立区域 */}
-          {enabledQRCodes.length > 0 && (
-            <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
-              <h3 style={{ fontSize: 15, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
-                💳 扫码支付
-              </h3>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 30, flexWrap: 'wrap' }}>
-                {enabledQRCodes.map(qr => (
-                  <div key={qr.id} style={{ textAlign: 'center' }}>
-                    <img
-                      src={qr.url}
-                      alt={qr.name}
-                      style={{ width: 160, height: 160, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6 }}
-                    />
-                    <p style={{ fontSize: 13, color: 'var(--text)', marginTop: 6, fontWeight: 600 }}>{qr.name}</p>
+          {/* 底部：扫码左边，订单图片中间，客户签字右下 */}
+          <div style={{ marginTop: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            {/* 左 - 扫码支付 */}
+            <div style={{ flexShrink: 0 }}>
+              {enabledQRCodes.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    {enabledQRCodes.map(qr => (
+                      <div key={qr.id} style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>💳 扫码支付</div>
+                        <img
+                          src={qr.url}
+                          alt={qr.name}
+                          style={{ width: 160, height: 160, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
+                        />
+                        <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>{qr.name}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-light)', marginTop: 10 }}>
-                请扫描上方二维码完成支付
-              </p>
+                </div>
+              )}
             </div>
-          )}
-
-          <div className="print-footer">
-            打印时间：{printTime}
+            {/* 中 - 订单图片 */}
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+              {imageUrl && showOrderImage && (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📷 订单图片</div>
+                  <img src={imageUrl} alt="订单图片" style={{ maxWidth: 160, maxHeight: 160, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
+                </div>
+              )}
+            </div>
+            {/* 右 - 客户签字 */}
+            <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>客户签字：</span>
+              <div style={{ borderBottom: '1px solid #333', width: 180 }}></div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-const API_BASE = 'http://192.168.0.114:108';
+const API_BASE = '';
 
 function getToken() {
   return localStorage.getItem('auth_token') || '';

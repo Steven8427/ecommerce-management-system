@@ -53,7 +53,7 @@ class SalesOrder extends BaseController
                 'notes' => $data['notes'] ?? '',
                 'image' => $data['image'] ?? ''
             ]);
-            
+
             // 3. 创建订单明细并扣减库存
             // 获取客户名称用于价格历史
             $customer = \app\model\Customer::find($data['customer_id']);
@@ -155,7 +155,7 @@ class SalesOrder extends BaseController
                 'notes' => $data['notes'] ?? '',
                 'image' => $data['image'] ?? ''
             ]);
-            
+
             // 5. 删除旧的订单明细
             SalesOrderItem::where('order_id', $id)->delete();
             
