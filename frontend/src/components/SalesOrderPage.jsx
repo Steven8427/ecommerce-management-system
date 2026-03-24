@@ -5,33 +5,23 @@ import { useToast } from './Toast';
 const fmt = v => '\u00a5' + parseFloat(v || 0).toFixed(2);
 
 // ============================================================================
-// QR Code Helper - 按用户隔离存储
-// ============================================================================
-function getCurrentUserId() {
-  try {
-    const user = JSON.parse(localStorage.getItem('auth_user') || '{}');
-    return user.id || 'default';
-  } catch { return 'default'; }
-}
-function loadQRCodes() {
-  try {
-    const uid = getCurrentUserId();
-    return JSON.parse(localStorage.getItem(`payment_qrcodes_${uid}`) || '[]');
-  } catch { return []; }
-}
-function saveQRCodes(list) {
-  const uid = getCurrentUserId();
-  localStorage.setItem(`payment_qrcodes_${uid}`, JSON.stringify(list));
-}
-
-// ============================================================================
-// QR Code Management Modal
+// QR Code Management Modal - 数据库存储
 // ============================================================================
 function QRCodeManagerModal({ onClose, onUpdate }) {
   const showToast = useToast();
-  const [qrcodes, setQrcodes] = useState(loadQRCodes());
+  const [qrcodes, setQrcodes] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [newName, setNewName] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiGet('/qrcode/list').then(res => {
+      if (res.code === 200) {
+        setQrcodes(res.data || []);
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
   const handleUpload = async (e) => {
     const file = e.target.files[0];
@@ -43,21 +33,22 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
     }
     setUploading(true);
     try {
-      const res = await apiUpload('/upload/image', file);
-      if (res.code === 200 && res.data?.url) {
-        const updated = [...qrcodes, {
-          id: Date.now(),
-          name: newName.trim(),
-          url: res.data.url,
-          enabled: true,
-        }];
-        setQrcodes(updated);
-        saveQRCodes(updated);
-        onUpdate(updated);
-        setNewName('');
-        showToast('success', '添加成功', '二维码已添加');
+      const uploadRes = await apiUpload('/upload/image', file);
+      if (uploadRes.code === 200 && uploadRes.data?.url) {
+        const res = await apiPost('/qrcode/add', { name: newName.trim(), url: uploadRes.data.url });
+        if (res.code === 200) {
+          // 重新加载列表
+          const listRes = await apiGet('/qrcode/list');
+          const updated = listRes.data || [];
+          setQrcodes(updated);
+          onUpdate(updated);
+          setNewName('');
+          showToast('success', '添加成功');
+        } else {
+          showToast('error', '添加失败', res.message);
+        }
       } else {
-        showToast('error', '上传失败', res.message || '未知错误');
+        showToast('error', '上传失败', uploadRes.message || '未知错误');
       }
     } catch (err) {
       showToast('error', '上传失败', err.message);
@@ -67,20 +58,24 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
     }
   };
 
-  const toggleEnabled = (id) => {
-    const updated = qrcodes.map(q => q.id === id ? { ...q, enabled: !q.enabled } : q);
-    setQrcodes(updated);
-    saveQRCodes(updated);
-    onUpdate(updated);
+  const toggleEnabled = async (id, currentEnabled) => {
+    try {
+      await apiPost(`/qrcode/update/${id}`, { enabled: !currentEnabled });
+      const updated = qrcodes.map(q => q.id === id ? { ...q, enabled: q.enabled ? 0 : 1 } : q);
+      setQrcodes(updated);
+      onUpdate(updated);
+    } catch {}
   };
 
-  const removeQR = (id) => {
+  const removeQR = async (id) => {
     if (!window.confirm('确定删除此二维码？')) return;
-    const updated = qrcodes.filter(q => q.id !== id);
-    setQrcodes(updated);
-    saveQRCodes(updated);
-    onUpdate(updated);
-    showToast('success', '已删除');
+    try {
+      await apiDelete(`/qrcode/delete/${id}`);
+      const updated = qrcodes.filter(q => q.id !== id);
+      setQrcodes(updated);
+      onUpdate(updated);
+      showToast('success', '已删除');
+    } catch {}
   };
 
   return (
@@ -135,16 +130,16 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{qr.name}</div>
-                  <div style={{ fontSize: 12, color: qr.enabled ? 'var(--success)' : 'var(--text-light)', marginTop: 2 }}>
-                    {qr.enabled ? '✓ 已启用（打印时显示）' : '已禁用（打印时不显示）'}
+                  <div style={{ fontSize: 12, color: Number(qr.enabled) ? 'var(--success)' : 'var(--text-light)', marginTop: 2 }}>
+                    {Number(qr.enabled) ? '✓ 已启用（打印时显示）' : '已禁用（打印时不显示）'}
                   </div>
                 </div>
                 <button
-                  className={`btn ${qr.enabled ? '' : 'btn-primary'}`}
+                  className={`btn ${Number(qr.enabled) ? '' : 'btn-primary'}`}
                   style={{ padding: '5px 12px', fontSize: 12 }}
-                  onClick={() => toggleEnabled(qr.id)}
+                  onClick={() => toggleEnabled(qr.id, Number(qr.enabled))}
                 >
-                  {qr.enabled ? '禁用' : '启用'}
+                  {Number(qr.enabled) ? '禁用' : '启用'}
                 </button>
                 <button
                   className="btn btn-danger"
@@ -292,9 +287,18 @@ function PrintPreviewModal({ order, onClose }) {
     ? `${window.location.origin}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`
     : rawImage;
 
-  // QR codes - 每次打印可以单独选择
-  const allQRCodes = loadQRCodes();
-  const [selectedQRIds, setSelectedQRIds] = useState(() => allQRCodes.filter(q => q.enabled).map(q => q.id));
+  // QR codes - 从API加载
+  const [allQRCodes, setAllQRCodes] = useState([]);
+  const [selectedQRIds, setSelectedQRIds] = useState([]);
+  useEffect(() => {
+    apiGet('/qrcode/list').then(res => {
+      if (res.code === 200) {
+        const list = res.data || [];
+        setAllQRCodes(list);
+        setSelectedQRIds(list.filter(q => Number(q.enabled)).map(q => q.id));
+      }
+    }).catch(() => {});
+  }, []);
   const toggleQR = (id) => {
     setSelectedQRIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -345,7 +349,7 @@ ${notes ? `<div style="margin-top:16px;font-size:13px"><strong>备注：</strong
 ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">💳 扫码支付</div><img src="${qr.url}" style="width:180px;height:180px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/><p style="font-size:11px;color:#666;margin-top:3px">${qr.name}</p></div>`).join('') : ''}
 ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px"><div style="font-size:12px;font-weight:600;margin-bottom:4px">📷 订单图片</div><img src="${imageUrl}" style="width:180px;height:180px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/></div>` : ''}
 </div>
-<div style="display:flex;align-items:flex-end;height:200px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600;white-space:nowrap">客户签字：</span><div style="border-bottom:1px solid #333;width:160px"></div></div></div>
+<div style="display:flex;flex-direction:column;justify-content:flex-end;height:200px;gap:48px"><div style="display:flex;align-items:baseline"><span style="font-size:14px;font-weight:600;white-space:nowrap;display:inline-block;width:80px;text-align:justify;text-align-last:justify">验收人</span><span style="font-size:14px;font-weight:600">：</span><div style="border-bottom:1px solid #333;width:160px"></div></div><div style="display:flex;align-items:baseline"><span style="font-size:14px;font-weight:600;white-space:nowrap;display:inline-block;width:80px;text-align:justify;text-align-last:justify">客户签字</span><span style="font-size:14px;font-weight:600">：</span><div style="border-bottom:1px solid #333;width:160px"></div></div></div>
 </div>
 </body></html>`;
     const win = window.open('', '_blank', 'width=800,height=900');
@@ -474,10 +478,16 @@ ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px">
                 </div>
               )}
             </div>
-            {/* 右 - 客户签字 */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', height: 200 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>客户签字：</span>
+            {/* 右 - 验收人 + 客户签字 */}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: 200, gap: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, display: 'inline-block', width: 80, textAlign: 'justify', textAlignLast: 'justify' }}>验收人</span>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>：</span>
+                <div style={{ borderBottom: '1px solid #333', width: 160 }}></div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, display: 'inline-block', width: 80, textAlign: 'justify', textAlignLast: 'justify' }}>客户签字</span>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>：</span>
                 <div style={{ borderBottom: '1px solid #333', width: 160 }}></div>
               </div>
             </div>
@@ -505,7 +515,7 @@ function OrderFormView({ editId, onBack }) {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showQRManager, setShowQRManager] = useState(false);
-  const [qrcodes, setQrcodes] = useState(loadQRCodes());
+  const [qrcodes, setQrcodes] = useState([]);
   const [historyPrices, setHistoryPrices] = useState([]);
   const [historyProductId, setHistoryProductId] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -527,6 +537,14 @@ function OrderFormView({ editId, onBack }) {
   useEffect(() => {
     apiGet('/customer/list').then(j => setCustomers(j.data || j || [])).catch(() => {});
   }, []);
+
+  // Load QR codes from API
+  const loadQRCodesFromAPI = useCallback(() => {
+    apiGet('/qrcode/list').then(res => {
+      if (res.code === 200) setQrcodes(res.data || []);
+    }).catch(() => {});
+  }, []);
+  useEffect(() => { loadQRCodesFromAPI(); }, [loadQRCodesFromAPI]);
 
   // Load existing order for edit
   useEffect(() => {
@@ -560,7 +578,7 @@ function OrderFormView({ editId, onBack }) {
   const profit = subtotal - costTotal;
   const total = subtotal;
 
-  const enabledQR = qrcodes.filter(q => q.enabled);
+  const enabledQR = qrcodes.filter(q => Number(q.enabled));
 
   const handleBack = () => {
     if (dirty && !window.confirm('有未保存的修改，确定要返回吗？')) return;

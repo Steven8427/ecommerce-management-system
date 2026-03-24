@@ -75,6 +75,14 @@ Route::group('stats', function () {
     Route::get('supplier-ranking', 'Stats/supplierRanking');
 });
 
+// 收款二维码 API
+Route::group('qrcode', function () {
+    Route::get('list', 'QrCode/list');
+    Route::post('add', 'QrCode/add');
+    Route::post('update/:id', 'QrCode/update');
+    Route::delete('delete/:id', 'QrCode/delete');
+});
+
 // 文件上传 API
 Route::post('upload/image', 'Upload/image');
 
