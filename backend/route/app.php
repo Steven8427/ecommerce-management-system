@@ -75,6 +75,12 @@ Route::group('stats', function () {
     Route::get('supplier-ranking', 'Stats/supplierRanking');
 });
 
+// 客户余额 API
+Route::group('balance', function () {
+    Route::get('records', 'Balance/records');
+    Route::post('adjust', 'Balance/adjust');
+});
+
 // 收款二维码 API
 Route::group('qrcode', function () {
     Route::get('list', 'QrCode/list');

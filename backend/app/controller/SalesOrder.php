@@ -86,7 +86,37 @@ class SalesOrder extends BaseController
 
             // 4. 计算总价
             $order->calculateTotal();
-            
+
+            // 5. 扣减客户余额
+            $deductAmount = floatval($data['actual_amount'] ?? 0);
+            if ($deductAmount <= 0) {
+                $deductAmount = floatval($order->total_amount ?? 0);
+            }
+            if ($deductAmount > 0 && $customer) {
+                $balanceBefore = floatval($customer->balance ?? 0);
+                $balanceAfter = $balanceBefore - $deductAmount;
+                $customer->balance = $balanceAfter;
+                $customer->save();
+
+                // 获取操作者
+                $token = $this->request->header('Authorization');
+                $token = $token ? str_replace('Bearer ', '', $token) : '';
+                $operator = $token ? Db::name('users')->where('token', $token)->find() : null;
+
+                Db::name('balance_records')->insert([
+                    'customer_id' => $data['customer_id'],
+                    'type' => 'order_deduct',
+                    'amount' => -$deductAmount,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'reason' => '客户清单 #' . $order->id . ' 扣款',
+                    'order_id' => $order->id,
+                    'operator_id' => $operator ? $operator['id'] : 0,
+                    'operator_name' => $operator ? ($operator['nickname'] ?: $operator['username']) : '',
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+
             Db::commit();
             return json(['code' => 200, 'message' => '创建成功', 'data' => ['order_id' => $order->id]]);
             
