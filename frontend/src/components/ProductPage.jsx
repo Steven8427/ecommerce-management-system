@@ -36,6 +36,7 @@ function ProductPage() {
   useEffect(() => {
     fetchCategories();
     fetchProducts();
+    // eslint-disable-next-line
   }, []);
 
   const fetchProducts = () => {
@@ -269,7 +270,18 @@ function ProductPage() {
                     <td>{'\u00A5'}{Number(product.cost_price).toFixed(2)}</td>
                     <td>{'\u00A5'}{Number(product.price).toFixed(2)}</td>
                     <td>{product.unit || '-'}</td>
-                    <td>{product.stock}</td>
+                    <td>
+                      {product.stock <= 0 ? (
+                        <span style={{
+                          fontWeight: 600, color: '#fff', background: '#e74c3c',
+                          padding: '2px 8px', borderRadius: 4, fontSize: 13,
+                        }}>
+                          缺货
+                        </span>
+                      ) : (
+                        <span>{product.stock}</span>
+                      )}
+                    </td>
                     <td>{getCategoryName(product)}</td>
                     <td>
                       {product.image ? (

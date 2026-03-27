@@ -16,7 +16,7 @@ class Balance extends BaseController
                 Db::execute("CREATE TABLE balance_records (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     customer_id INT NOT NULL,
-                    type ENUM('manual_add','manual_sub','manual_set','order_deduct') NOT NULL,
+                    type VARCHAR(30) NOT NULL DEFAULT '',
                     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
                     balance_before DECIMAL(12,2) NOT NULL DEFAULT 0,
                     balance_after DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -28,6 +28,14 @@ class Balance extends BaseController
                     INDEX idx_customer (customer_id),
                     INDEX idx_order (order_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            }
+        } catch (\Exception $e) {}
+
+        // 把 type 从 ENUM 改为 VARCHAR（兼容新类型）
+        try {
+            $col = Db::query("SHOW COLUMNS FROM balance_records LIKE 'type'");
+            if (!empty($col) && strpos($col[0]['Type'], 'enum') !== false) {
+                Db::execute("ALTER TABLE balance_records MODIFY COLUMN type VARCHAR(30) NOT NULL DEFAULT ''");
             }
         } catch (\Exception $e) {}
 

@@ -214,7 +214,7 @@ export default function StatsPage() {
       ) : (
         <>
           {/* 基础统计 */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 32 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 32 }}>
             <StatCard icon="📦" label="商品数量" value={counts.products || 0} color="#e0f2fe" />
             <StatCard icon="👥" label="客户数量" value={counts.customers || 0} color="#fce7f3" />
             <StatCard icon="🏭" label="制作厂家" value={counts.suppliers || 0} color="#f0fdf4" />
@@ -240,7 +240,7 @@ export default function StatsPage() {
             <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               💰 客户清单（销售统计）
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
               <StatCard
                 icon="💰"
                 label="销售总额"
@@ -268,7 +268,7 @@ export default function StatsPage() {
                 color="#f0fdf4"
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: 20 }}>
               <RankingTable
                 title="客户销售排行"
                 icon="👥"
@@ -294,7 +294,7 @@ export default function StatsPage() {
             <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               🏭 合作制作厂家（采购统计）
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
               <StatCard
                 icon="📥"
                 label="采购总额"

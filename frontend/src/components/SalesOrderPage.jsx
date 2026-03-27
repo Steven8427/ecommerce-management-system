@@ -7,20 +7,110 @@ const fmt = v => '\u00a5' + parseFloat(v || 0).toFixed(2);
 // ============================================================================
 // QR Code Management Modal - 数据库存储
 // ============================================================================
+// ============================================================================
+// 客户搜索选择器
+// ============================================================================
+function CustomerSelector({ customers, value, onChange, onRefresh }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const selected = customers.find(c => String(c.id) === String(value));
+  const filtered = search.trim()
+    ? customers.filter(c =>
+        (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (c.phone || '').includes(search)
+      )
+    : customers;
+
+  return (
+    <div className="form-group" ref={ref} style={{ position: 'relative' }}>
+      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>选择客户 <span style={{ color: 'var(--danger)', fontWeight: 700 }}>*</span></span>
+        <button
+          type="button"
+          onClick={() => { onRefresh(); }}
+          style={{ background: 'none', border: 'none', color: 'var(--info)', cursor: 'pointer', fontSize: 12, padding: 0 }}
+        >
+          🔄 刷新列表
+        </button>
+      </label>
+      <div
+        onClick={() => { setOpen(!open); if (!open) { setSearch(''); onRefresh(); } }}
+        style={{
+          padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          cursor: 'pointer', background: 'var(--white)', fontSize: 14,
+          color: selected ? 'var(--text)' : 'var(--text-lighter)',
+        }}
+      >
+        {selected ? `${selected.name}${selected.phone ? ' - ' + selected.phone : ''}` : '请选择客户'}
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+          background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          boxShadow: 'var(--shadow-md)', maxHeight: 280, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="搜索客户名称/电话..."
+              style={{ width: '100%', padding: '6px 10px', fontSize: 13, border: '1px solid var(--border)', borderRadius: 4 }}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          <div style={{ overflow: 'auto', flex: 1 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-light)', fontSize: 13 }}>
+                无匹配客户
+              </div>
+            ) : (
+              filtered.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => { onChange(String(c.id)); setOpen(false); }}
+                  style={{
+                    padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                    background: String(c.id) === String(value) ? 'var(--bg)' : 'transparent',
+                    borderBottom: '1px solid var(--border-light)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = String(c.id) === String(value) ? 'var(--bg)' : 'transparent'}
+                >
+                  <span style={{ fontWeight: 500 }}>{c.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{c.phone || ''}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QRCodeManagerModal({ onClose, onUpdate }) {
   const showToast = useToast();
   const [qrcodes, setQrcodes] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [newName, setNewName] = useState('');
-  const [loading, setLoading] = useState(true);
-
   useEffect(() => {
-    setLoading(true);
     apiGet('/qrcode/list').then(res => {
       if (res.code === 200) {
         setQrcodes(res.data || []);
       }
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(() => {});
   }, []);
 
   const handleUpload = async (e) => {
@@ -276,6 +366,7 @@ function PrintPreviewModal({ order, onClose }) {
   const items = order.items || [];
   const subtotal = items.reduce((sum, i) => sum + parseFloat(i.unit_price || i.price || 0) * parseInt(i.quantity || i.qty || 1), 0);
   const total = parseFloat(order.total_amount || order.subtotal || subtotal);
+  const discountAmt = parseFloat(order.discount_amount || 0);
   const actual = parseFloat(order.actual_amount || 0);
   const notes = order.description || order.notes || '';
 
@@ -341,6 +432,7 @@ ${items.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#aaa"
 <div class="summary">
 <div class="row"><span>商品小计：</span><span>${fmt(subtotal)}</span></div>
 <div class="total"><span>应收总计：</span><span>${fmt(total)}</span></div>
+${discountAmt > 0 ? `<div style="display:flex;justify-content:space-between;color:#f39c12;font-weight:600;margin-top:6px"><span>优惠金额：</span><span>-${fmt(discountAmt)}</span></div>` : ''}
 <div class="actual"><span>实收金额：</span><span>${fmt(actual)}</span></div>
 </div>
 ${notes ? `<div style="margin-top:16px;font-size:13px"><strong>备注：</strong>${notes}</div>` : ''}
@@ -448,7 +540,12 @@ ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px">
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 16, borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 6 }}>
               <span>应收总计：</span><span>{fmt(total)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontWeight: 600 }}>
+            {discountAmt > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f39c12', fontWeight: 600, marginTop: 4 }}>
+                <span>优惠金额：</span><span>-{fmt(discountAmt)}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontWeight: 600, marginTop: 4 }}>
               <span>实收金额：</span><span>{fmt(actual)}</span>
             </div>
           </div>
@@ -508,7 +605,7 @@ function OrderFormView({ editId, onBack }) {
   const [customerId, setCustomerId] = useState('');
   const [notes, setNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [actualAmount, setActualAmount] = useState('');
+  const [discountAmount, setDiscountAmount] = useState('');
   const [showProductModal, setShowProductModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
@@ -533,10 +630,11 @@ function OrderFormView({ editId, onBack }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [historyProductId]);
 
-  // Load customers
-  useEffect(() => {
+  // Load customers (refresh when form is focused)
+  const fetchCustomers = useCallback(() => {
     apiGet('/customer/list').then(j => setCustomers(j.data || j || [])).catch(() => {});
   }, []);
+  useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
   // Load QR codes from API
   const loadQRCodesFromAPI = useCallback(() => {
@@ -556,14 +654,14 @@ function OrderFormView({ editId, onBack }) {
         setCustomerId(detail.customer_id || '');
         setNotes(detail.description || detail.notes || '');
         setImageUrl(detail.image || '');
-        setActualAmount(detail.actual_amount || '');
+        setDiscountAmount(detail.discount_amount || '');
         if (detail.items && detail.items.length > 0) {
           setItems(detail.items.map(i => ({
             product_id: i.product_id,
             name: i.product?.name || i.name || '',
             unit: i.product?.unit || i.unit || '',
             unit_price: parseFloat(i.unit_price || i.price || 0),
-            cost_price: parseFloat(i.cost_price || 0),
+            cost_price: parseFloat(i.cost_price || i.product?.cost_price || 0),
             quantity: parseInt(i.quantity || i.qty || 1),
           })));
         }
@@ -575,10 +673,11 @@ function OrderFormView({ editId, onBack }) {
   // Calculations
   const costTotal = items.reduce((sum, i) => sum + (parseFloat(i.cost_price) || 0) * (parseInt(i.quantity) || 0), 0);
   const subtotal = items.reduce((sum, i) => sum + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0);
-  const profit = subtotal - costTotal;
+  const discount = parseFloat(discountAmount) || 0;
   const total = subtotal;
+  const actualTotal = total - discount;
+  const profit = actualTotal - costTotal;
 
-  const enabledQR = qrcodes.filter(q => Number(q.enabled));
 
   const handleBack = () => {
     if (dirty && !window.confirm('有未保存的修改，确定要返回吗？')) return;
@@ -678,7 +777,8 @@ function OrderFormView({ editId, onBack }) {
       const payload = {
         customer_id: customerId,
         description: notes,
-        actual_amount: actualAmount || total,
+        discount_amount: discount,
+        actual_amount: actualTotal,
         image: imageUrl || '',
         items: items.map(i => ({
           product_id: i.product_id,
@@ -717,7 +817,7 @@ function OrderFormView({ editId, onBack }) {
         {editId ? `编辑客户清单 #${editId}` : '创建客户清单'}
       </h2>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="order-form-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, alignItems: 'start' }}>
         {/* Left Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Products Section */}
@@ -857,18 +957,12 @@ function OrderFormView({ editId, onBack }) {
           <div className="form-section">
             <h4>👤 客户信息</h4>
 
-            <div className="form-group">
-              <label>选择客户 <span style={{ color: 'var(--danger)', fontWeight: 700 }}>*</span></label>
-              <select
-                value={customerId}
-                onChange={e => { setCustomerId(e.target.value); setDirty(true); }}
-              >
-                <option value="">请选择客户</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` - ${c.phone}` : ''}</option>
-                ))}
-              </select>
-            </div>
+            <CustomerSelector
+              customers={customers}
+              value={customerId}
+              onChange={v => { setCustomerId(v); setDirty(true); }}
+              onRefresh={fetchCustomers}
+            />
 
             <div className="form-group">
               <label>订单备注</label>
@@ -1004,14 +1098,34 @@ function OrderFormView({ editId, onBack }) {
             </div>
 
             <div className="form-group">
-              <label>实收金额</label>
+              <label>优惠金额</label>
               <input
                 type="number"
                 step="0.01"
-                placeholder="输入实收金额"
-                value={actualAmount}
-                onChange={e => { setActualAmount(e.target.value); setDirty(true); }}
+                min="0"
+                placeholder="输入优惠金额（无优惠留空）"
+                value={discountAmount}
+                onChange={e => { setDiscountAmount(e.target.value); setDirty(true); }}
               />
+            </div>
+
+            <div className="form-group">
+              <label>实收金额</label>
+              <input
+                type="text"
+                readOnly
+                value={fmt(actualTotal)}
+                style={{
+                  background: discount > 0 ? '#fef3c7' : '#f7fafc',
+                  fontWeight: 600,
+                  borderColor: discount > 0 ? '#f59e0b' : undefined,
+                }}
+              />
+              {discount > 0 && (
+                <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
+                  已优惠 {fmt(discount)}
+                </div>
+              )}
             </div>
 
             <button

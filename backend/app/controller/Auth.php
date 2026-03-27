@@ -31,7 +31,7 @@ class Auth extends BaseController
         }
 
         // Generate simple token
-        $token = md5($user['id'] . time() . uniqid());
+        $token = bin2hex(random_bytes(32));
         Db::name('users')->where('id', $user['id'])->update([
             'token' => $token,
             'last_login' => date('Y-m-d H:i:s'),

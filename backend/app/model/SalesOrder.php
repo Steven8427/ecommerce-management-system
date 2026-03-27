@@ -42,11 +42,14 @@ class SalesOrder extends Model
             }
         }
         
+        $discountAmt = floatval($this->discount_amount ?? 0);
         $total = $subtotal - $this->discount + $this->shipping_fee;
-        $profit = $subtotal - $costTotal;
-        
+        $actual = $total - $discountAmt;
+        $profit = $actual - $costTotal;
+
         $this->subtotal = $subtotal;
         $this->total_amount = $total;
+        $this->actual_amount = $actual;
         $this->cost_total = $costTotal;
         $this->profit = $profit;
         $this->save();

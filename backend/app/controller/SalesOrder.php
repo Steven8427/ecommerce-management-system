@@ -11,6 +11,17 @@ use think\facade\Db;
  */
 class SalesOrder extends BaseController
 {
+    public function __construct(\think\App $app)
+    {
+        parent::__construct($app);
+        try {
+            $cols = Db::query("SHOW COLUMNS FROM sales_orders LIKE 'discount_amount'");
+            if (empty($cols)) {
+                Db::execute("ALTER TABLE sales_orders ADD COLUMN discount_amount DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER total_amount");
+            }
+        } catch (\Exception $e) {}
+    }
+
     /**
      * 销售单列表
      */
@@ -47,6 +58,7 @@ class SalesOrder extends BaseController
                 'order_date' => date('Y-m-d H:i:s'),
                 'status' => 'pending',
                 'discount' => $data['discount'] ?? 0,
+                'discount_amount' => $data['discount_amount'] ?? 0,
                 'shipping_fee' => $data['shipping_fee'] ?? 0,
                 'actual_amount' => $data['actual_amount'] ?? 0,
                 'description' => $data['description'] ?? '',
@@ -153,7 +165,8 @@ class SalesOrder extends BaseController
             if (!$order) {
                 return json(['code' => 404, 'message' => '订单不存在']);
             }
-            
+            $oldActualAmount = floatval($order->actual_amount ?? 0);
+
             // 2. 恢复旧订单的库存
             $oldItems = SalesOrderItem::where('order_id', $id)->select();
             foreach ($oldItems as $oldItem) {
@@ -179,6 +192,7 @@ class SalesOrder extends BaseController
             $order->save([
                 'customer_id' => $data['customer_id'],
                 'discount' => $data['discount'] ?? 0,
+                'discount_amount' => $data['discount_amount'] ?? 0,
                 'shipping_fee' => $data['shipping_fee'] ?? 0,
                 'actual_amount' => $data['actual_amount'] ?? 0,
                 'description' => $data['description'] ?? '',
@@ -220,7 +234,35 @@ class SalesOrder extends BaseController
             
             // 7. 重新计算总价
             $order->calculateTotal();
-            
+
+            // 8. 更新客户余额（退回旧扣款，扣新金额）
+            $newActual = floatval($data['actual_amount'] ?? 0);
+            $diff = $newActual - $oldActualAmount; // 正数=多扣，负数=少扣(退回)
+
+            if ($diff != 0 && $customer) {
+                $balanceBefore = floatval($customer->balance ?? 0);
+                $balanceAfter = $balanceBefore - $diff;
+                $customer->balance = $balanceAfter;
+                $customer->save();
+
+                $token = $this->request->header('Authorization');
+                $token = $token ? str_replace('Bearer ', '', $token) : '';
+                $operator = $token ? Db::name('users')->where('token', $token)->find() : null;
+
+                Db::name('balance_records')->insert([
+                    'customer_id' => $data['customer_id'],
+                    'type' => $diff > 0 ? 'order_deduct' : 'order_refund',
+                    'amount' => -$diff,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'reason' => '客户清单 #' . $order->id . ' 编辑调整（' . ($diff > 0 ? '补扣' : '退回') . '）',
+                    'order_id' => $order->id,
+                    'operator_id' => $operator ? $operator['id'] : 0,
+                    'operator_name' => $operator ? ($operator['nickname'] ?: $operator['username']) : '',
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+
             Db::commit();
             return json(['code' => 200, 'message' => '更新成功', 'data' => ['order_id' => $order->id]]);
             
@@ -256,10 +298,44 @@ class SalesOrder extends BaseController
                 }
             }
             
-            // 3. 删除订单明细
+            // 3. 恢复客户余额（从balance_records查实际净扣款额）
+            $totalDeducted = Db::name('balance_records')
+                ->where('order_id', $id)
+                ->where('customer_id', $order->customer_id)
+                ->sum('amount');
+            // totalDeducted 是负数（扣款）+ 正数（退回）的和，取反就是净扣款
+            $refundAmount = -floatval($totalDeducted);
+            if ($refundAmount > 0) {
+                $customer = \app\model\Customer::find($order->customer_id);
+                if ($customer) {
+                    $balanceBefore = floatval($customer->balance ?? 0);
+                    $balanceAfter = $balanceBefore + $refundAmount;
+                    $customer->balance = $balanceAfter;
+                    $customer->save();
+
+                    $token = $this->request->header('Authorization');
+                    $token = $token ? str_replace('Bearer ', '', $token) : '';
+                    $operator = $token ? Db::name('users')->where('token', $token)->find() : null;
+
+                    Db::name('balance_records')->insert([
+                        'customer_id' => $order->customer_id,
+                        'type' => 'order_refund',
+                        'amount' => $refundAmount,
+                        'balance_before' => $balanceBefore,
+                        'balance_after' => $balanceAfter,
+                        'reason' => '删除客户清单 #' . $order->id . ' 退回金额',
+                        'order_id' => $order->id,
+                        'operator_id' => $operator ? $operator['id'] : 0,
+                        'operator_name' => $operator ? ($operator['nickname'] ?: $operator['username']) : '',
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]);
+                }
+            }
+
+            // 4. 删除订单明细
             SalesOrderItem::where('order_id', $id)->delete();
-            
-            // 4. 删除订单主表
+
+            // 5. 删除订单主表
             $order->delete();
             
             Db::commit();

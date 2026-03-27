@@ -123,6 +123,7 @@ main.container {
   padding: 30px;
   min-height: calc(100vh - 120px);
   box-shadow: var(--shadow-sm);
+  overflow-x: auto;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -903,24 +904,94 @@ main.container {
 /* ═══════════════════════════════════════════════════════════
    响应式
    ═══════════════════════════════════════════════════════════ */
+/* 表格横向滚动容器 */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── 大屏适配 (< 1200px) ── */
+@media (max-width: 1200px) {
+  .container {
+    max-width: 100%;
+    padding: 16px;
+  }
+
+  .navbar h1 {
+    margin-right: 20px;
+    font-size: 17px;
+  }
+
+  .nav-menu li span {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+}
+
+/* ── 平板适配 (< 992px) ── */
+@media (max-width: 992px) {
+  .navbar .container {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .nav-menu {
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+
+  /* 数据表格允许横向滚动 */
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .data-table thead,
+  .data-table tbody,
+  .data-table tr {
+    display: table;
+    width: 100%;
+    table-layout: auto;
+  }
+
+  .data-table {
+    display: table;
+    min-width: 600px;
+  }
+
+  .sticky-summary {
+    position: static;
+  }
+}
+
+/* ── 手机适配 (< 768px) ── */
 @media (max-width: 768px) {
   .navbar .container {
     flex-direction: column;
     gap: 10px;
+    padding: 10px 16px;
   }
 
   .navbar h1 {
     margin-right: 0;
+    font-size: 18px;
   }
 
   .nav-menu {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 4px;
+  }
+
+  .nav-menu li span {
+    padding: 6px 10px;
+    font-size: 12px;
   }
 
   main.container {
-    padding: 16px;
-    margin-top: 12px;
+    padding: 12px;
+    margin-top: 8px;
   }
 
   .page-header {
@@ -929,12 +1000,17 @@ main.container {
     align-items: flex-start;
   }
 
+  .page-header h2 {
+    font-size: 18px;
+  }
+
   .product-selector {
     grid-template-columns: 1fr 1fr;
   }
 
   .data-table {
-    font-size: 13px;
+    font-size: 12px;
+    min-width: 500px;
   }
 
   .data-table th,
@@ -944,19 +1020,68 @@ main.container {
 
   .modal-content {
     margin: 2% auto;
-    padding: 20px;
+    padding: 16px;
     width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .form-section {
+    padding: 16px;
+  }
+
+  .form-group label {
+    font-size: 13px;
+  }
+
+  .btn {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+
+  /* 订单编辑两栏改一栏 */
+  .order-form-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 
+/* ── 小手机适配 (< 480px) ── */
 @media (max-width: 480px) {
   .product-selector {
     grid-template-columns: 1fr;
   }
 
   .nav-menu li span {
-    padding: 6px 10px;
-    font-size: 13px;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .navbar h1 {
+    font-size: 16px;
+  }
+
+  .page-header h2 {
+    font-size: 16px;
+  }
+
+  .data-table {
+    min-width: 400px;
+    font-size: 11px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 6px 8px;
+  }
+
+  .modal-content {
+    width: 98%;
+    margin: 1% auto;
+    padding: 12px;
+  }
+
+  .form-section {
+    padding: 12px;
   }
 }
 

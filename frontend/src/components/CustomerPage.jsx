@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api';
 import { useToast } from './Toast';
 
@@ -9,6 +9,7 @@ const TYPE_LABELS = {
   manual_sub: { text: '手动减少', color: '#e74c3c' },
   manual_set: { text: '直接设定', color: '#f39c12' },
   order_deduct: { text: '订单扣款', color: '#8e44ad' },
+  order_refund: { text: '订单退回', color: '#3498db' },
 };
 
 function CustomerPage() {
@@ -37,7 +38,22 @@ function CustomerPage() {
   const [records, setRecords] = useState([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
-  useEffect(() => { fetchCustomers(); fetchLevels(); }, []);
+  useEffect(() => { fetchCustomers(); fetchLevels(); // eslint-disable-next-line
+  }, []);
+
+  // 当组件变为可见时自动刷新（从其他tab切回来时）
+  const containerRef = useRef(null);
+  useEffect(() => {
+    const fn = fetchCustomers;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) fn(); },
+      { threshold: 0.1 }
+    );
+    const el = containerRef.current;
+    if (el) observer.observe(el);
+    return () => { if (el) observer.unobserve(el); };
+    // eslint-disable-next-line
+  }, []);
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -147,10 +163,23 @@ function CustomerPage() {
   };
 
   // ── 余额操作 ──
-  const openBalanceModal = (customer, type) => {
-    setBalanceModal({ customer, type });
+  const [balanceType, setBalanceType] = useState('add');
+
+  const openBalanceModal = async (customer) => {
+    setBalanceModal({ customer });
     setBalanceAmount('');
     setBalanceReason('');
+    setBalanceType('add');
+    // 同时加载记录
+    setRecordsLoading(true);
+    try {
+      const res = await apiGet(`/balance/records?customer_id=${customer.id}`);
+      setRecords(res.data || []);
+    } catch {
+      setRecords([]);
+    } finally {
+      setRecordsLoading(false);
+    }
   };
 
   const submitBalance = async () => {
@@ -164,14 +193,22 @@ function CustomerPage() {
       const typeMap = { add: 'manual_add', sub: 'manual_sub', set: 'manual_set' };
       const res = await apiPost('/balance/adjust', {
         customer_id: balanceModal.customer.id,
-        type: typeMap[balanceModal.type],
+        type: typeMap[balanceType],
         amount: amt,
         reason: balanceReason,
       });
       if (res.code === 200) {
         showToast('success', '操作成功');
-        setBalanceModal(null);
+        setBalanceAmount('');
+        setBalanceReason('');
         await fetchCustomers();
+        // 刷新余额和记录
+        const updatedCustomers = await apiGet('/customer/list');
+        const cList = updatedCustomers.data || updatedCustomers || [];
+        const updated = cList.find(c => c.id === balanceModal.customer.id);
+        if (updated) setBalanceModal({ customer: updated });
+        const recRes = await apiGet(`/balance/records?customer_id=${balanceModal.customer.id}`);
+        setRecords(recRes.data || []);
       } else {
         showToast('error', '操作失败', res.message);
       }
@@ -182,22 +219,21 @@ function CustomerPage() {
     }
   };
 
-  // ── 余额记录 ──
-  const openRecords = async (customer) => {
+  const openRecordsModal = async (customer) => {
     setRecordsModal(customer);
     setRecordsLoading(true);
     try {
       const res = await apiGet(`/balance/records?customer_id=${customer.id}`);
       setRecords(res.data || []);
-    } catch (err) {
-      showToast('error', '加载失败', err.message);
+    } catch {
+      setRecords([]);
     } finally {
       setRecordsLoading(false);
     }
   };
 
   return (
-    <div className="page-container">
+    <div className="page-container" ref={containerRef}>
       <div className="page-header">
         <h2>👥 客户管理</h2>
         {tab === 'customers' && (
@@ -255,12 +291,10 @@ function CustomerPage() {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEditCustomer(c)}>编辑</button>
-                        <button className="btn btn-success" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openBalanceModal(c, 'add')}>+金额</button>
-                        <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openBalanceModal(c, 'sub')}>-金额</button>
-                        <button className="btn" style={{ padding: '4px 10px', fontSize: 12, background: '#fef3c7', color: '#92400e', borderColor: '#fbbf24' }} onClick={() => openBalanceModal(c, 'set')}>设定</button>
-                        <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openRecords(c)}>记录</button>
+                        <button className="btn" style={{ padding: '4px 10px', fontSize: 12, background: '#f0fdf4', color: '#166534', borderColor: '#86efac' }} onClick={() => openBalanceModal(c)}>金额</button>
+                        <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openRecordsModal(c)}>记录</button>
                         <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setDeleteConfirm({ target: 'customer', id: c.id })}>删除</button>
                       </div>
                     </td>
@@ -360,71 +394,112 @@ function CustomerPage() {
         </div>
       )}
 
-      {/* ── 弹窗：余额操作 ── */}
+      {/* ── 弹窗：金额管理（操作+记录合一） ── */}
       {balanceModal && (
         <div className="modal-overlay" onClick={() => setBalanceModal(null)}>
-          <div className="modal-content" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>
-                {balanceModal.type === 'add' && '增加金额'}
-                {balanceModal.type === 'sub' && '减少金额'}
-                {balanceModal.type === 'set' && '设定金额'}
-                {' — '}{balanceModal.customer.name}
-              </h3>
+              <h3>💰 金额管理 — {balanceModal.customer.name}</h3>
               <button className="close-btn" onClick={() => setBalanceModal(null)}>×</button>
             </div>
             <div style={{ padding: '0 24px 24px' }}>
-              <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+              {/* 当前余额 */}
+              <div style={{ marginBottom: 20, padding: 16, background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-light)' }}>当前余额</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: parseFloat(balanceModal.customer.balance || 0) >= 0 ? '#27ae60' : '#e74c3c' }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: parseFloat(balanceModal.customer.balance || 0) >= 0 ? '#27ae60' : '#e74c3c' }}>
                   {fmt(balanceModal.customer.balance)}
                 </div>
               </div>
-              <div className="form-group">
-                <label>
-                  {balanceModal.type === 'add' && '增加金额'}
-                  {balanceModal.type === 'sub' && '减少金额'}
-                  {balanceModal.type === 'set' && '设定为金额'}
-                  <span style={{ color: '#e74c3c' }}> *</span>
-                </label>
+
+              {/* 操作区 */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                {[
+                  { key: 'add', label: '+ 增加', color: '#27ae60', bg: '#dcfce7' },
+                  { key: 'sub', label: '- 减少', color: '#e74c3c', bg: '#fee2e2' },
+                  { key: 'set', label: '= 设定', color: '#f39c12', bg: '#fef3c7' },
+                ].map(t => (
+                  <button
+                    key={t.key}
+                    onClick={() => setBalanceType(t.key)}
+                    style={{
+                      flex: 1, padding: '8px 0', border: '2px solid',
+                      borderColor: balanceType === t.key ? t.color : 'transparent',
+                      background: t.bg, color: t.color,
+                      borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="number" step="0.01" min="0"
                   value={balanceAmount}
                   onChange={e => setBalanceAmount(e.target.value)}
                   placeholder="输入金额"
-                  autoFocus
+                  style={{ flex: 1 }}
                 />
-              </div>
-              <div className="form-group">
-                <label>原因/备注</label>
-                <textarea
+                <input
                   value={balanceReason}
                   onChange={e => setBalanceReason(e.target.value)}
-                  rows={2}
-                  placeholder="输入操作原因..."
+                  placeholder="原因/备注（选填）"
+                  style={{ flex: 1 }}
                 />
+                <button
+                  className="btn btn-primary"
+                  style={{ whiteSpace: 'nowrap' }}
+                  disabled={balanceSaving}
+                  onClick={submitBalance}
+                >
+                  {balanceSaving ? '...' : '确认'}
+                </button>
               </div>
-              <button
-                className="btn btn-primary"
-                style={{ width: '100%' }}
-                disabled={balanceSaving}
-                onClick={submitBalance}
-              >
-                {balanceSaving ? '处理中...' : '确认'}
-              </button>
+
+              {/* 简要记录（最近5条） */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-light)' }}>最近记录</div>
+                {recordsLoading ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-light)' }}>加载中...</div>
+                ) : records.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-lighter)', padding: '8px 0' }}>暂无记录</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {records.slice(0, 5).map(r => {
+                      const t = TYPE_LABELS[r.type] || { text: r.type, color: '#999' };
+                      return (
+                        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0' }}>
+                          <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', background: t.color + '18', color: t.color }}>{t.text}</span>
+                          <span style={{ fontWeight: 600, color: parseFloat(r.amount) >= 0 ? '#27ae60' : '#e74c3c' }}>
+                            {parseFloat(r.amount) >= 0 ? '+' : ''}{fmt(r.amount)}
+                          </span>
+                          <span style={{ color: 'var(--text-lighter)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.reason || ''}
+                          </span>
+                          <span style={{ color: 'var(--text-lighter)', fontSize: 11, whiteSpace: 'nowrap' }}>{(r.created_at || '').slice(0, 10)}</span>
+                        </div>
+                      );
+                    })}
+                    {records.length > 5 && (
+                      <div style={{ fontSize: 11, color: 'var(--text-light)', textAlign: 'center', paddingTop: 4 }}>
+                        还有 {records.length - 5} 条记录，点击「记录」按钮查看全部
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── 弹窗：余额记录 ── */}
+      {/* ── 弹窗：完整金额记录 ── */}
       {recordsModal && (
         <div className="modal-overlay" onClick={() => setRecordsModal(null)}>
-          <div className="modal-content" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: 750 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>金额记录 — {recordsModal.name}</h3>
+              <h3>📋 金额记录 — {recordsModal.name}</h3>
               <button className="close-btn" onClick={() => setRecordsModal(null)}>×</button>
             </div>
             <div style={{ padding: '0 24px 24px' }}>
@@ -459,7 +534,7 @@ function CustomerPage() {
                           <tr key={r.id}>
                             <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.created_at}</td>
                             <td>
-                              <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, background: t.color + '18', color: t.color }}>
+                              <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', background: t.color + '18', color: t.color }}>
                                 {t.text}
                               </span>
                             </td>
