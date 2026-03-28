@@ -54,7 +54,7 @@ export default function LoginPage({ onLogin }) {
 
   if (isSetup === null) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' }}>
         <div style={{ color: '#fff', fontSize: 18 }}>加载中...</div>
       </div>
     );
@@ -66,7 +66,7 @@ export default function LoginPage({ onLogin }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
       padding: 20,
     }}>
       <div style={{
@@ -163,7 +163,7 @@ export default function LoginPage({ onLogin }) {
             disabled={loading}
             style={{
               width: '100%', padding: '13px 20px',
-              background: loading ? '#a0aec0' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: loading ? '#a0aec0' : 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
               color: '#fff', border: 'none', borderRadius: 10,
               fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
               transition: 'opacity 0.2s, transform 0.1s',

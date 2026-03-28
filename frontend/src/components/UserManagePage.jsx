@@ -3,11 +3,8 @@ import { apiGet, apiPost, apiDelete } from '../api';
 import { useToast } from './Toast';
 
 const MODULE_LIST = [
-  { key: 'products', label: '📦 商品模块' },
   { key: 'customers', label: '👥 客户管理' },
-  { key: 'suppliers', label: '🏭 制作厂家管理' },
-  { key: 'sales', label: '💰 客户清单' },
-  { key: 'purchase', label: '📥 合作制作厂家' },
+  { key: 'sales', label: '📋 客户订单' },
   { key: 'stats', label: '📊 数据统计' },
 ];
 

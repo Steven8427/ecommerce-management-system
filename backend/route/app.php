@@ -17,12 +17,8 @@ Route::group('auth', function () {
     Route::post('reset-password', 'Auth/resetPassword');
 });
 
-// 商品模块 API
+// 耗材分类 API（供销售单选材使用）
 Route::group('product', function () {
-    Route::get('list', 'Product/index');
-    Route::post('add', 'Product/add');
-    Route::put('update/:id', 'Product/update');
-    Route::delete('delete/:id', 'Product/delete');
     Route::get('categories', 'Product/categories');
     Route::post('category/add', 'Product/addCategory');
     Route::delete('category/delete/:id', 'Product/deleteCategory');
@@ -34,37 +30,21 @@ Route::group('customer', function () {
     Route::post('add', 'Customer/add');
     Route::put('update/:id', 'Customer/update');
     Route::delete('delete/:id', 'Customer/delete');
+    Route::get('debts', 'Customer/debts');
     Route::get('levels', 'Customer/levels');
     Route::post('level/add', 'Customer/addLevel');
     Route::put('level/update/:id', 'Customer/updateLevel');
     Route::delete('level/delete/:id', 'Customer/deleteLevel');
 });
 
-// 供应商管理 API
-Route::group('supplier', function () {
-    Route::get('list', 'Supplier/index');
-    Route::post('add', 'Supplier/add');
-    Route::put('update/:id', 'Supplier/update');
-    Route::delete('delete/:id', 'Supplier/delete');
-});
-
-// 销售单 API
+// 销售订单 API
 Route::group('sales', function () {
     Route::get('list', 'SalesOrder/index');
     Route::post('create', 'SalesOrder/create');
     Route::post('update/:id', 'SalesOrder/update');
-    Route::get('history-prices/:id', 'SalesOrder/historyPrices');
     Route::get('detail/:id', 'SalesOrder/detail');
     Route::delete('delete/:id', 'SalesOrder/delete');
-});
-
-// 进货单 API
-Route::group('purchase', function () {
-    Route::get('list', 'PurchaseOrder/index');
-    Route::post('create', 'PurchaseOrder/create');
-    Route::post('update/:id', 'PurchaseOrder/update');
-    Route::get('detail/:id', 'PurchaseOrder/detail');
-    Route::delete('delete/:id', 'PurchaseOrder/delete');
+    Route::post('status/:id', 'SalesOrder/updateStatus');
 });
 
 // 数据统计 API
@@ -72,13 +52,6 @@ Route::group('stats', function () {
     Route::get('overview', 'Stats/overview');
     Route::get('customer-ranking', 'Stats/customerRanking');
     Route::get('product-ranking', 'Stats/productRanking');
-    Route::get('supplier-ranking', 'Stats/supplierRanking');
-});
-
-// 客户余额 API
-Route::group('balance', function () {
-    Route::get('records', 'Balance/records');
-    Route::post('adjust', 'Balance/adjust');
 });
 
 // 收款二维码 API

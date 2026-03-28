@@ -4,9 +4,52 @@ import { useToast } from './Toast';
 
 const fmt = v => '\u00a5' + parseFloat(v || 0).toFixed(2);
 
-// ============================================================================
-// QR Code Management Modal - 数据库存储
-// ============================================================================
+const DEFAULT_UNITS = ['平方米', '米', '块', '个'];
+
+const createEmptyItem = () => ({
+  _id: Date.now() + Math.random(),
+  _isNew: true,
+  name: '',
+  unit: '平方米',
+  width: '',
+  height: '',
+  quantity: 1,
+  unit_price: '',
+  customer_price: '',
+  cost_details: [],
+  materials: [],
+  content: '',
+  remark: '',
+  image: '',
+});
+
+const calcArea = (item) => {
+  return (parseFloat(item.width) || 0) * (parseFloat(item.height) || 0);
+};
+
+const calcAmount = (item) => {
+  const price = parseFloat(item.unit_price) || 0;
+  const qty = parseInt(item.quantity) || 0;
+  const w = parseFloat(item.width) || 0;
+  const h = parseFloat(item.height) || 0;
+  switch (item.unit) {
+    case '平方米': return w * h * price * qty;
+    case '米': return price * w * qty;
+    case '块':
+    case '个':
+    default: return price * qty;
+  }
+};
+
+const calcCostPrice = (item) => {
+  return (item.cost_details || []).reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+};
+
+const getItemTotal = (item) => {
+  const cp = parseFloat(item.customer_price);
+  return cp > 0 ? cp : calcAmount(item);
+};
+
 // ============================================================================
 // 客户搜索选择器
 // ============================================================================
@@ -100,6 +143,9 @@ function CustomerSelector({ customers, value, onChange, onRefresh }) {
   );
 }
 
+// ============================================================================
+// QR Code Management Modal
+// ============================================================================
 function QRCodeManagerModal({ onClose, onUpdate }) {
   const showToast = useToast();
   const [qrcodes, setQrcodes] = useState([]);
@@ -107,9 +153,7 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
   const [newName, setNewName] = useState('');
   useEffect(() => {
     apiGet('/qrcode/list').then(res => {
-      if (res.code === 200) {
-        setQrcodes(res.data || []);
-      }
+      if (res.code === 200) setQrcodes(res.data || []);
     }).catch(() => {});
   }, []);
 
@@ -127,7 +171,6 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
       if (uploadRes.code === 200 && uploadRes.data?.url) {
         const res = await apiPost('/qrcode/add', { name: newName.trim(), url: uploadRes.data.url });
         if (res.code === 200) {
-          // 重新加载列表
           const listRes = await apiGet('/qrcode/list');
           const updated = listRes.data || [];
           setQrcodes(updated);
@@ -173,8 +216,6 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
       <div className="modal-content" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
         <button className="close-btn" onClick={onClose}>&times;</button>
         <h3 style={{ marginBottom: 20 }}>💳 收款二维码管理</h3>
-
-        {/* Add new */}
         <div style={{
           background: 'var(--bg)', borderRadius: 'var(--radius)', padding: 16, marginBottom: 20,
           border: '2px dashed var(--border)',
@@ -197,8 +238,6 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
             </label>
           </div>
         </div>
-
-        {/* List */}
         {qrcodes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
             <div style={{ fontSize: 40, marginBottom: 8, opacity: 0.4 }}>💳</div>
@@ -213,31 +252,312 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
                 background: qr.enabled ? 'var(--white)' : '#f9fafb',
                 opacity: qr.enabled ? 1 : 0.6,
               }}>
-                <img
-                  src={qr.url}
-                  alt={qr.name}
-                  style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }}
-                />
+                <img src={qr.url} alt={qr.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{qr.name}</div>
                   <div style={{ fontSize: 12, color: Number(qr.enabled) ? 'var(--success)' : 'var(--text-light)', marginTop: 2 }}>
                     {Number(qr.enabled) ? '✓ 已启用（打印时显示）' : '已禁用（打印时不显示）'}
                   </div>
                 </div>
-                <button
-                  className={`btn ${Number(qr.enabled) ? '' : 'btn-primary'}`}
-                  style={{ padding: '5px 12px', fontSize: 12 }}
-                  onClick={() => toggleEnabled(qr.id, Number(qr.enabled))}
-                >
+                <button className={`btn ${Number(qr.enabled) ? '' : 'btn-primary'}`} style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => toggleEnabled(qr.id, Number(qr.enabled))}>
                   {Number(qr.enabled) ? '禁用' : '启用'}
                 </button>
-                <button
-                  className="btn btn-danger"
-                  style={{ padding: '5px 12px', fontSize: 12 }}
-                  onClick={() => removeQR(qr.id)}
+                <button className="btn btn-danger" style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => removeQR(qr.id)}>删除</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          <button className="btn" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 耗材选择器 (Material Picker)
+// ============================================================================
+function MaterialPicker({ categories, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const toggle = (name) => {
+    if (selected.includes(name)) {
+      onChange(selected.filter(m => m !== name));
+    } else {
+      onChange([...selected, name]);
+    }
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', minHeight: 30 }}>
+        {selected.map(m => (
+          <span key={m} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '2px 8px', background: '#e0f2fe', color: '#0369a1',
+            borderRadius: 12, fontSize: 12, fontWeight: 500,
+          }}>
+            {m}
+            <span onClick={() => toggle(m)} style={{ cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1 }}>&times;</span>
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          style={{
+            padding: '2px 10px', border: '1px dashed var(--border)', borderRadius: 12,
+            background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--text-light)',
+          }}
+        >
+          + 选择
+        </button>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 50,
+          background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: 'var(--shadow-md)', padding: 8, marginTop: 4, minWidth: 200, maxHeight: 200, overflow: 'auto',
+        }}>
+          {categories.length === 0 ? (
+            <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-light)', fontSize: 13 }}>暂无分类</div>
+          ) : categories.map(cat => (
+            <label key={cat.id || cat.name} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+              cursor: 'pointer', borderRadius: 4, fontSize: 13,
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(cat.name)}
+                onChange={() => toggle(cat.name)}
+              />
+              {cat.name}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 成本明细编辑器 (Cost Breakdown Editor)
+// ============================================================================
+function CostBreakdownEditor({ details, onChange }) {
+  const [expanded, setExpanded] = useState(false);
+  const total = (details || []).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+
+  const addDetail = () => {
+    onChange([...(details || []), { name: '', amount: '' }]);
+    setExpanded(true);
+  };
+
+  const updateDetail = (idx, field, value) => {
+    const updated = [...(details || [])];
+    updated[idx] = { ...updated[idx], [field]: value };
+    onChange(updated);
+  };
+
+  const removeDetail = (idx) => {
+    onChange((details || []).filter((_, i) => i !== idx));
+  };
+
+  const detailSummary = (details || []).filter(d => d.name).map(d => `${d.name} ${parseFloat(d.amount) || 0}¥`).join('、');
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: 'var(--text-light)' }}>成本价:</span>
+        <span style={{ fontWeight: 600, color: '#d97706' }}>{fmt(total)}</span>
+        {!expanded && detailSummary && (
+          <span style={{ fontSize: 11, color: '#b0b8c4' }}>{detailSummary}</span>
+        )}
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: '1px 8px', border: '1px solid var(--border)', borderRadius: 4,
+            background: 'transparent', cursor: 'pointer', fontSize: 11, color: 'var(--text-light)',
+          }}
+        >
+          {expanded ? '收起' : '展开明细'}
+        </button>
+        {!expanded && (
+          <button
+            type="button"
+            onClick={addDetail}
+            style={{
+              padding: '1px 8px', border: '1px dashed var(--border)', borderRadius: 4,
+              background: 'transparent', cursor: 'pointer', fontSize: 11, color: 'var(--primary)',
+            }}
+          >
+            + 添加
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 8, padding: 10, background: '#fffbeb', borderRadius: 6, border: '1px solid #fde68a', maxWidth: 360 }}>
+          {(details || []).map((d, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <input
+                type="text"
+                placeholder="名称"
+                value={d.name}
+                onChange={e => updateDetail(idx, 'name', e.target.value)}
+                style={{ width: 120, padding: '4px 8px', border: '1px solid #fde68a', borderRadius: 4, fontSize: 13, background: '#fff' }}
+              />
+              <input
+                type="number"
+                step="0.01"
+                placeholder="金额"
+                value={d.amount}
+                onChange={e => updateDetail(idx, 'amount', e.target.value)}
+                style={{ width: 80, padding: '4px 8px', border: '1px solid #fde68a', borderRadius: 4, fontSize: 13, background: '#fff' }}
+              />
+              <button
+                type="button"
+                onClick={() => removeDetail(idx)}
+                style={{ padding: '2px 6px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)', fontSize: 16 }}
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={addDetail}
+              style={{
+                flex: 1, padding: '4px 0', border: '1px dashed #fbbf24', borderRadius: 4,
+                background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#d97706',
+              }}
+            >
+              + 添加明细
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              style={{
+                padding: '4px 14px', border: '1px solid #fbbf24', borderRadius: 4,
+                background: '#fbbf24', cursor: 'pointer', fontSize: 12, color: '#fff', fontWeight: 600,
+              }}
+            >
+              完成
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 耗材分类管理弹窗 (Category Manager Modal)
+// ============================================================================
+function CategoryManagerModal({ categories, onRefresh, onClose }) {
+  const showToast = useToast();
+  const [newName, setNewName] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    const name = newName.trim();
+    if (!name) { showToast('warning', '提示', '请输入分类名称'); return; }
+    setAdding(true);
+    try {
+      const res = await apiPost('/product/category/add', { name });
+      if (res.code === 200 || res.id || res.data) {
+        showToast('success', '添加成功');
+        setNewName('');
+        onRefresh();
+      } else {
+        showToast('error', '添加失败', res.message || '未知错误');
+      }
+    } catch (err) {
+      showToast('error', '添加失败', err.message);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`确定删除分类「${name}」吗？`)) return;
+    try {
+      const res = await apiDelete(`/product/category/delete/${id}`);
+      if (res.code === 200) {
+        showToast('success', '已删除');
+        onRefresh();
+      } else {
+        showToast('error', '删除失败', res.message || '未知错误');
+      }
+    } catch (err) {
+      showToast('error', '删除失败', err.message);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <button className="close-btn" onClick={onClose}>&times;</button>
+        <h3 style={{ marginBottom: 20 }}>🏷️ 耗材分类管理</h3>
+
+        {/* Add new */}
+        <div style={{
+          display: 'flex', gap: 8, marginBottom: 20, padding: 14,
+          background: 'var(--bg)', borderRadius: 'var(--radius)', border: '2px dashed var(--border)',
+        }}>
+          <input
+            type="text"
+            placeholder="输入新分类名称..."
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+            style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14 }}
+          />
+          <button
+            className="btn btn-primary"
+            style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+            onClick={handleAdd}
+            disabled={adding}
+          >
+            {adding ? '添加中...' : '+ 添加'}
+          </button>
+        </div>
+
+        {/* List */}
+        {categories.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
+            <div style={{ fontSize: 40, marginBottom: 8, opacity: 0.4 }}>🏷️</div>
+            <div>暂无耗材分类，请添加</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {categories.map(cat => (
+              <div key={cat.id} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', background: '#f0f9ff', border: '1px solid #bae6fd',
+                borderRadius: 20, fontSize: 14,
+              }}>
+                <span style={{ color: '#0369a1', fontWeight: 500 }}>{cat.name}</span>
+                <span
+                  onClick={() => handleDelete(cat.id, cat.name)}
+                  style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 18, fontWeight: 700, lineHeight: 1 }}
+                  onMouseEnter={e => e.target.style.color = '#ef4444'}
+                  onMouseLeave={e => e.target.style.color = '#94a3b8'}
                 >
-                  删除
-                </button>
+                  &times;
+                </span>
               </div>
             ))}
           </div>
@@ -252,107 +572,396 @@ function QRCodeManagerModal({ onClose, onUpdate }) {
 }
 
 // ============================================================================
-// Product Selector Modal
+// 单位输入组合框 (Unit ComboBox)
 // ============================================================================
-function ProductSelectorModal({ onSelect, onClose }) {
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [search, setSearch] = useState('');
-  const [catFilter, setCatFilter] = useState('');
-  const [selected, setSelected] = useState([]);
+function UnitComboBox({ value, onChange, style }) {
+  const [open, setOpen] = useState(false);
+  const [inputVal, setInputVal] = useState(value || '');
+  const ref = useRef(null);
+
+  useEffect(() => { setInputVal(value || ''); }, [value]);
 
   useEffect(() => {
-    apiGet('/product/list').then(j => setProducts(j.data || j || [])).catch(() => {});
-    apiGet('/product/categories').then(j => setCategories(j.data || j || [])).catch(() => {});
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const filtered = products.filter(p => {
-    const matchName = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchCat = catFilter === '' || p.category_name === catFilter || String(p.category) === catFilter;
-    return matchName && matchCat;
-  });
+  const filtered = DEFAULT_UNITS.filter(u =>
+    !inputVal || u.includes(inputVal)
+  );
 
-  const toggleSelect = (p) => {
-    setSelected(prev => {
-      const exists = prev.find(s => s.id === p.id);
-      if (exists) return prev.filter(s => s.id !== p.id);
-      return [...prev, p];
-    });
+  const handleInput = (e) => {
+    const v = e.target.value;
+    setInputVal(v);
+    setOpen(true);
+    // If exact match with a preset, apply it immediately
+    const match = DEFAULT_UNITS.find(u => u === v);
+    if (match) {
+      onChange(match);
+    } else {
+      onChange(v);
+    }
   };
 
-  const handleConfirm = () => {
-    onSelect(selected);
-    onClose();
+  const handleSelect = (u) => {
+    setInputVal(u);
+    onChange(u);
+    setOpen(false);
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 1000 }} onClick={e => e.stopPropagation()}>
-        <button className="close-btn" onClick={onClose}>&times;</button>
-        <h3>选择商品</h3>
-
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          <input
-            type="text"
-            placeholder="搜索商品名称..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14 }}
-          />
-          <select
-            value={catFilter}
-            onChange={e => setCatFilter(e.target.value)}
-            style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, minWidth: 140 }}
-          >
-            <option value="">全部分类</option>
-            {categories.map(c => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <input
+        type="text"
+        value={inputVal}
+        onChange={handleInput}
+        onFocus={() => setOpen(true)}
+        placeholder="单位"
+        style={{
+          padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4,
+          fontSize: 13, background: 'var(--white)', width: '100%', minWidth: 80,
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+          background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 6,
+          boxShadow: 'var(--shadow-md)', marginTop: 2, overflow: 'hidden',
+        }}>
+          {filtered.map(u => (
+            <div
+              key={u}
+              onClick={() => handleSelect(u)}
+              style={{
+                padding: '6px 10px', cursor: 'pointer', fontSize: 13,
+                background: u === value ? 'var(--bg)' : 'transparent',
+                fontWeight: u === value ? 600 : 400,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+              onMouseLeave={e => e.currentTarget.style.background = u === value ? 'var(--bg)' : 'transparent'}
+            >
+              {u}
+            </div>
+          ))}
         </div>
+      )}
+    </div>
+  );
+}
 
-        <div className="product-selector">
-          {filtered.length === 0 && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
-              暂无商品
+// ============================================================================
+// 项目卡片 (Item Card) - 支持查看/编辑两种模式
+// ============================================================================
+function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, defaultEditing }) {
+  const [editing, setEditing] = useState(defaultEditing);
+  const [showCostPopover, setShowCostPopover] = useState(false);
+  const costPopRef = useRef(null);
+  const area = calcArea(item);
+  const amount = calcAmount(item);
+  const total = getItemTotal(item);
+  const costPrice = calcCostPrice(item);
+
+  useEffect(() => {
+    if (!showCostPopover) return;
+    const handleClick = (e) => {
+      if (costPopRef.current && !costPopRef.current.contains(e.target)) setShowCostPopover(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showCostPopover]);
+
+  const update = (field, value) => {
+    onUpdate(item._id, field, value);
+  };
+
+  const inputStyle = {
+    padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4,
+    fontSize: 13, background: 'var(--white)',
+  };
+
+  // ---- 查看模式：紧凑一行 ----
+  if (!editing) {
+    const materialsStr = (item.materials || []).join(', ');
+
+    const cellStyle = { padding: '10px 4px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 0,
+        border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        background: 'var(--white)', marginBottom: 4, fontSize: 12, overflow: 'visible',
+      }}>
+        <div style={{ ...cellStyle, width: 28, flex: 'none', fontWeight: 700, color: 'var(--text-light)' }}>{index + 1}</div>
+        <div title={item.name || ''} style={{ ...cellStyle, flex: 2, minWidth: 60, textAlign: 'left', fontWeight: 600 }}>{item.name || '-'}</div>
+        <div title={materialsStr || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{materialsStr || '-'}</div>
+        <div title={item.content || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.content || '-'}</div>
+        <div title={item.width ? String(parseFloat(item.width)) : ''} style={{ ...cellStyle, flex: 1, minWidth: 44 }}>{item.width ? parseFloat(item.width) : '-'}</div>
+        <div title={item.height ? String(parseFloat(item.height)) : ''} style={{ ...cellStyle, flex: 1, minWidth: 44 }}>{item.height ? parseFloat(item.height) : '-'}</div>
+        <div title={String(item.quantity || 1)} style={{ ...cellStyle, width: 36, flex: 'none' }}>{item.quantity || 1}</div>
+        <div title={area > 0 ? area.toFixed(4) + 'm²' : ''} style={{ ...cellStyle, flex: 1, minWidth: 50 }}>{area > 0 ? area.toFixed(2) + 'm²' : '-'}</div>
+        <div
+          ref={costPopRef}
+          title={costPrice > 0 ? '成本: ¥' + costPrice.toFixed(2) + ' (点击查看明细)' : ''}
+          style={{ ...cellStyle, flex: 1, minWidth: 52, color: '#d97706', position: 'relative', cursor: costPrice > 0 ? 'pointer' : 'default', overflow: 'visible' }}
+          onClick={() => { if (costPrice > 0) setShowCostPopover(!showCostPopover); }}
+        >
+          {costPrice > 0 ? '¥' + costPrice.toFixed(2) : '-'}
+          {showCostPopover && (item.cost_details || []).length > 0 && (
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                zIndex: 100, background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
+                boxShadow: 'var(--shadow-lg)', padding: '10px 14px', minWidth: 180, textAlign: 'left',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+                成本明细 ({(item.cost_details || []).length}项)
+              </div>
+              {(item.cost_details || []).map((d, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text)' }}>
+                  <span>{d.name || '未命名'}</span>
+                  <span style={{ fontWeight: 600, color: '#d97706' }}>{fmt(d.amount)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, color: '#d97706' }}>
+                <span>合计</span>
+                <span>{fmt(costPrice)}</span>
+              </div>
             </div>
           )}
-          {filtered.map(p => {
-            const isSelected = selected.some(s => s.id === p.id);
-            return (
-              <div
-                key={p.id}
-                className={`product-card${isSelected ? ' selected' : ''}`}
-                onClick={() => toggleSelect(p)}
-              >
-                {p.image && (
-                  <img
-                    src={p.image}
-                    alt={p.name}
-                    style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
-                  />
-                )}
-                <h4>{p.name}</h4>
-                <div className="price">{fmt(p.price)}</div>
-                <div style={{ fontSize: 12, color: 'var(--warning)', marginBottom: 4 }}>
-                  成本价: {fmt(p.cost_price || 0)}
-                </div>
-                <div className="stock">库存: {p.stock ?? '-'}</div>
-                {p.category_name && (
-                  <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>
-                    {p.category_name}
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" onClick={handleConfirm} disabled={selected.length === 0}>
-            确认选择 {selected.length > 0 && `(${selected.length})`}
+        <div title={parseFloat(item.unit_price) ? '¥' + parseFloat(item.unit_price) : ''} style={{ ...cellStyle, flex: 1, minWidth: 46 }}>{parseFloat(item.unit_price) ? '¥' + parseFloat(item.unit_price) : '-'}</div>
+        <div title={item.unit || ''} style={{ ...cellStyle, width: 56, flex: 'none' }}>{item.unit || '-'}</div>
+        <div title={fmt(total)} style={{ ...cellStyle, flex: 1, minWidth: 52, textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}>{fmt(total)}</div>
+        <div title={item.remark || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.remark || '-'}</div>
+        <div style={{ ...cellStyle, width: 48, flex: 'none', padding: '6px 4px' }}>
+          {item.image ? (
+            <img src={item.image} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
+          ) : (
+            <span style={{ color: 'var(--text-lighter)', fontSize: 11 }}>-</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 4, padding: '6px 4px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{
+              padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 4,
+              background: 'var(--white)', cursor: 'pointer', fontSize: 12, color: 'var(--primary)', fontWeight: 500,
+            }}
+          >
+            编辑
           </button>
+          <button
+            type="button"
+            onClick={() => onRemove(item._id)}
+            style={{
+              padding: '3px 8px', border: 'none', borderRadius: 4,
+              background: '#fef2f2', cursor: 'pointer', fontSize: 12, color: 'var(--danger)', fontWeight: 500,
+            }}
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- 编辑模式：展开卡片 ----
+  return (
+    <div style={{
+      border: '2px solid var(--primary)', borderRadius: 'var(--radius)',
+      background: '#fefefe', padding: 16, marginBottom: 12,
+    }}>
+      {/* Row 1: Name + Unit + Done/Delete */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)',
+          color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
+        }}>
+          {index + 1}
+        </span>
+        <input
+          type="text"
+          placeholder="商品名称"
+          value={item.name}
+          onChange={e => update('name', e.target.value)}
+          style={{ ...inputStyle, flex: 1, fontWeight: 600, fontSize: 14 }}
+        />
+        <UnitComboBox
+          value={item.unit}
+          onChange={v => update('unit', v)}
+          style={{ minWidth: 90, flexShrink: 0 }}
+        />
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          style={{
+            padding: '6px 16px', border: 'none', background: 'var(--primary)',
+            color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 600, flexShrink: 0,
+          }}
+        >
+          完成
+        </button>
+        <button
+          type="button"
+          onClick={() => onRemove(item._id)}
+          style={{
+            padding: '6px 14px', border: 'none', background: '#fef2f2',
+            color: 'var(--danger)', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 600, flexShrink: 0,
+          }}
+        >
+          删除
+        </button>
+      </div>
+
+      {/* Row 2: Dimensions */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-light)' }}>宽(m):</span>
+          <input
+            type="number"
+            step="0.01"
+            value={item.width}
+            onChange={e => update('width', e.target.value)}
+            style={{ ...inputStyle, width: 80 }}
+          />
+        </label>
+        <span style={{ color: 'var(--text-lighter)' }}>×</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-light)' }}>高(m):</span>
+          <input
+            type="number"
+            step="0.01"
+            value={item.height}
+            onChange={e => update('height', e.target.value)}
+            style={{ ...inputStyle, width: 80 }}
+          />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-light)' }}>数量:</span>
+          <input
+            type="number"
+            min="1"
+            value={item.quantity}
+            onChange={e => update('quantity', e.target.value)}
+            style={{ ...inputStyle, width: 70 }}
+          />
+        </label>
+        {area > 0 && (
+          <span style={{ fontSize: 13, color: 'var(--info)', fontWeight: 600 }}>
+            面积: {area.toFixed(2)} m²
+          </span>
+        )}
+      </div>
+
+      {/* Row 3: Prices */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-light)' }}>单价:</span>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="0.00"
+            value={item.unit_price}
+            onChange={e => update('unit_price', e.target.value)}
+            style={{ ...inputStyle, width: 100 }}
+          />
+        </label>
+        <span style={{ fontSize: 13, color: 'var(--text-light)' }}>
+          计算金额: <strong style={{ color: 'var(--primary)' }}>{fmt(amount)}</strong>
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>
+          = {fmt(amount)}
+        </span>
+      </div>
+
+      {/* Row 4: Cost breakdown */}
+      <div style={{ marginBottom: 12 }}>
+        <CostBreakdownEditor
+          details={item.cost_details}
+          onChange={v => update('cost_details', v)}
+        />
+      </div>
+
+      {/* Row 5: Materials */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 4 }}>耗材:</div>
+          <MaterialPicker
+            categories={categories}
+            selected={item.materials || []}
+            onChange={v => update('materials', v)}
+          />
+        </div>
+      </div>
+
+      {/* Row 6: Content */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 13, color: 'var(--text-light)', display: 'block', marginBottom: 4 }}>制作内容:</label>
+        <input
+          type="text"
+          placeholder="制作内容..."
+          value={item.content}
+          onChange={e => update('content', e.target.value)}
+          style={{ ...inputStyle, width: '100%' }}
+        />
+      </div>
+
+      {/* Row 7: Remark + Image */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-light)', display: 'block', marginBottom: 4 }}>备注:</label>
+          <input
+            type="text"
+            placeholder="备注信息..."
+            value={item.remark}
+            onChange={e => update('remark', e.target.value)}
+            style={{ ...inputStyle, width: '100%' }}
+          />
+        </div>
+        <div style={{ minWidth: 160 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-light)', display: 'block', marginBottom: 4 }}>图样:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{
+              padding: '4px 12px', border: '1px dashed var(--border)', borderRadius: 4,
+              cursor: 'pointer', fontSize: 12, color: 'var(--text-light)', background: 'var(--bg)',
+            }}>
+              📷 上传
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => onImageUpload(item._id, e)}
+              />
+            </label>
+            {item.image && (
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <img
+                  src={item.image}
+                  alt="图样"
+                  style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => update('image', '')}
+                  style={{
+                    position: 'absolute', top: -6, right: -6, width: 16, height: 16,
+                    borderRadius: '50%', border: 'none', background: 'var(--danger)',
+                    color: '#fff', fontSize: 10, cursor: 'pointer', lineHeight: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -364,21 +973,16 @@ function ProductSelectorModal({ onSelect, onClose }) {
 // ============================================================================
 function PrintPreviewModal({ order, onClose }) {
   const items = order.items || [];
-  const subtotal = items.reduce((sum, i) => sum + parseFloat(i.unit_price || i.price || 0) * parseInt(i.quantity || i.qty || 1), 0);
-  const total = parseFloat(order.total_amount || order.subtotal || subtotal);
+  const orderTotal = items.reduce((sum, item) => {
+    const cp = parseFloat(item.customer_price);
+    const amt = parseFloat(item.amount) || 0;
+    return sum + (cp > 0 ? cp : amt);
+  }, 0);
+  const total = parseFloat(order.total_amount || orderTotal);
   const discountAmt = parseFloat(order.discount_amount || 0);
-  const actual = parseFloat(order.actual_amount || 0);
+  const actual = parseFloat(order.actual_amount || (total - discountAmt));
   const notes = order.description || order.notes || '';
 
-  // 确保图片URL是绝对路径
-  const rawImage = order.image || '';
-  // 图片URL：用当前页面的origin（经过proxy），而不是直接连后端端口
-  // 这样无论从 localhost:3000 还是 192.168.0.107:3000 都能正确加载
-  const imageUrl = rawImage && !rawImage.startsWith('http') && !rawImage.startsWith('blob')
-    ? `${window.location.origin}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`
-    : rawImage;
-
-  // QR codes - 从API加载
   const [allQRCodes, setAllQRCodes] = useState([]);
   const [selectedQRIds, setSelectedQRIds] = useState([]);
   useEffect(() => {
@@ -394,61 +998,103 @@ function PrintPreviewModal({ order, onClose }) {
     setSelectedQRIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
   const enabledQRCodes = allQRCodes.filter(q => selectedQRIds.includes(q.id));
-  const [showOrderImage, setShowOrderImage] = useState(true);
-
   const handlePrint = () => {
-    // QR and image are now in the bottom flex row
-
+    const prepaidAmt = parseFloat(order.prepaid_amount) || 0;
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><title>客户清单 #${order.id}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;padding:30px;color:#222;min-height:100vh;display:flex;flex-direction:column}
-h2{text-align:center;font-size:22px;margin-bottom:4px}
-.sub{text-align:center;color:#666;font-size:13px;margin-bottom:12px}
-hr{border:none;border-top:2px solid #333;margin:10px 0 16px}
-.info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;font-size:13px;line-height:1.7}
-.info strong{display:inline-block;width:70px}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
-th{background:#f5f6fa;padding:8px 10px;text-align:left;font-weight:700;border:1px solid #ddd}
-td{padding:8px 10px;border:1px solid #ddd}
-.summary{background:#f9f9fb;padding:12px 16px;border-radius:6px;font-size:13px}
-.row{display:flex;justify-content:space-between;margin-bottom:4px}
-.total{display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:4px}
-.actual{display:flex;justify-content:space-between;color:#27ae60;font-weight:600;margin-top:4px}
-.bottom-section{margin-top:auto;padding-top:16px;display:flex;justify-content:space-between;align-items:flex-start;page-break-inside:avoid;break-inside:avoid}
-@page{size:landscape;margin:10mm}
-@media print{body{padding:8px}}
+body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;padding:16px 24px;color:#222;font-size:12px;min-height:100vh;display:flex;flex-direction:column}
+.content{flex:1}
+h2{text-align:center;font-size:18px;margin-bottom:2px}
+.sub{text-align:center;color:#666;font-size:11px;margin-bottom:8px}
+hr{border:none;border-top:1.5px solid #333;margin:6px 0 10px}
+.info{display:flex;justify-content:space-between;margin-bottom:10px;font-size:12px;line-height:1.6}
+.info strong{font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px}
+th{background:#f0f1f5;padding:5px 6px;text-align:center;font-weight:700;border:1px solid #ccc;white-space:nowrap}
+td{padding:4px 6px;border:1px solid #ddd;text-align:center}
+td.left{text-align:left}
+.item-img{width:36px;height:36px;object-fit:cover;border-radius:3px}
+.summary-row{display:flex;justify-content:flex-end;gap:24px;margin-bottom:8px;font-size:12px;flex-wrap:wrap}
+.summary-item{display:flex;gap:4px;align-items:baseline}
+.summary-item.highlight{font-weight:700;font-size:14px;color:#1a7f37}
+.bottom-section{display:flex;justify-content:space-between;align-items:flex-end;padding-top:16px;page-break-inside:avoid;break-inside:avoid}
+.sign-area{display:flex;gap:40px}
+.sign-line{display:flex;align-items:baseline;gap:4px}
+.sign-line span{font-size:12px;font-weight:600;white-space:nowrap}
+.sign-line div{border-bottom:1px solid #333;width:120px}
+@page{size:A4 landscape;margin:8mm}
+@media print{body{padding:8px 16px}}
 </style></head><body>
+<div class="content">
 <h2>视觉创印广告物料制作清单</h2>
 <p class="sub">订单号：#${order.id}</p><hr/>
 <div class="info">
-<div><strong>客户：</strong>${order.customer?.name || '-'}<br/><strong>电话：</strong>${order.customer?.phone || '-'}<br/><strong>地址：</strong>${order.customer?.address || '-'}</div>
-<div><strong>订单日期：</strong>${order.order_date || '-'}</div>
+<div><strong>客户：</strong>${order.customer?.name || '-'}　　<strong>电话：</strong>${order.customer?.phone || '-'}　　<strong>地址：</strong>${order.customer?.address || '-'}</div>
+<div><strong>日期：</strong>${order.order_date || '-'}</div>
 </div>
-<table><thead><tr><th>序号</th><th>商品名称</th><th>单位</th><th>单价</th><th>数量</th><th>小计</th></tr></thead><tbody>
-${items.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#aaa">无商品明细</td></tr>' : items.map((item, idx) => `<tr><td>${idx + 1}</td><td>${item.product?.name || item.name || '-'}</td><td>${item.unit || item.product?.unit || '-'}</td><td>${fmt(item.unit_price || item.price)}</td><td>${item.quantity || item.qty || 1}</td><td>${fmt((item.unit_price || item.price || 0) * (item.quantity || item.qty || 1))}</td></tr>`).join('')}
+<table><thead><tr><th>序号</th><th>商品名称</th><th>耗材</th><th>制作内容</th><th>宽(m)</th><th>高(m)</th><th>数量</th><th>面积</th><th>单价</th><th>单位</th><th>金额</th><th>备注</th><th>图样</th></tr></thead><tbody>
+${items.length === 0 ? '<tr><td colspan="13" style="text-align:center;color:#aaa;padding:16px">无明细</td></tr>' : items.map((item, idx) => {
+  const w = parseFloat(item.width) || 0;
+  const h = parseFloat(item.height) || 0;
+  const area = item.unit === '平方米' ? (w * h).toFixed(2) + 'm²' : '-';
+  const amt = parseFloat(item.amount) || 0;
+  const cp = parseFloat(item.customer_price);
+  const finalAmt = cp > 0 ? cp : amt;
+  const mats = (() => { try { const m = typeof item.materials === 'string' ? JSON.parse(item.materials) : (item.materials || []); return m.map(x => x.name || x).filter(Boolean).join(', '); } catch { return ''; } })();
+  const imgSrc = item.image ? (item.image.startsWith('http') ? item.image : window.location.origin + (item.image.startsWith('/') ? '' : '/') + item.image) : '';
+  return `<tr>
+    <td>${idx+1}</td>
+    <td class="left">${item.name||'-'}</td>
+    <td class="left">${mats||'-'}</td>
+    <td class="left">${item.content||'-'}</td>
+    <td>${w || '-'}</td>
+    <td>${h || '-'}</td>
+    <td>${item.quantity||1}</td>
+    <td>${area}</td>
+    <td>${fmt(item.unit_price)}</td>
+    <td>${item.unit||'-'}</td>
+    <td style="font-weight:600">${fmt(finalAmt)}</td>
+    <td class="left">${item.remark||''}</td>
+    <td>${imgSrc ? `<img class="item-img" src="${imgSrc}"/>` : '-'}</td>
+  </tr>`;
+}).join('')}
 </tbody></table>
-<div class="summary">
-<div class="row"><span>商品小计：</span><span>${fmt(subtotal)}</span></div>
-<div class="total"><span>应收总计：</span><span>${fmt(total)}</span></div>
-${discountAmt > 0 ? `<div style="display:flex;justify-content:space-between;color:#f39c12;font-weight:600;margin-top:6px"><span>优惠金额：</span><span>-${fmt(discountAmt)}</span></div>` : ''}
-<div class="actual"><span>实收金额：</span><span>${fmt(actual)}</span></div>
+<div class="summary-row">
+<div class="summary-item"><span>项目合计：</span><span style="font-weight:600">${fmt(total)}</span></div>
+${discountAmt > 0 ? `<div class="summary-item"><span style="color:#f39c12">优惠：</span><span style="color:#f39c12;font-weight:600">-${fmt(discountAmt)}</span></div>` : ''}
+${prepaidAmt > 0 ? `<div class="summary-item"><span>预付：</span><span style="font-weight:600">${fmt(prepaidAmt)}</span></div>` : ''}
+<div class="summary-item highlight"><span>实收总计：</span><span>${fmt(actual)}</span></div>
 </div>
-${notes ? `<div style="margin-top:16px;font-size:13px"><strong>备注：</strong>${notes}</div>` : ''}
+${notes ? `<div style="margin-bottom:10px;font-size:12px"><strong>备注：</strong>${notes}</div>` : ''}
+</div>
 <div class="bottom-section">
-<div style="display:flex;gap:20px;align-items:flex-start">
-${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:12px;font-weight:600;margin-bottom:4px">💳 扫码支付</div><img src="${qr.url}" style="width:180px;height:180px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/><p style="font-size:11px;color:#666;margin-top:3px">${qr.name}</p></div>`).join('') : ''}
-${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px"><div style="font-size:12px;font-weight:600;margin-bottom:4px">📷 订单图片</div><img src="${imageUrl}" style="width:180px;height:180px;object-fit:contain;border:1px solid #ddd;border-radius:4px"/></div>` : ''}
+<div style="display:flex;gap:16px;align-items:flex-start">
+${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:10px;font-weight:600;margin-bottom:3px">扫码支付</div><img src="${qr.url}" style="width:120px;height:120px;object-fit:contain;border:1px solid #ddd;border-radius:3px"/><p style="font-size:10px;color:#666;margin-top:2px">${qr.name}</p></div>`).join('') : ''}
 </div>
-<div style="display:flex;flex-direction:column;justify-content:flex-end;height:200px;gap:48px"><div style="display:flex;align-items:baseline"><span style="font-size:14px;font-weight:600;white-space:nowrap;display:inline-block;width:80px;text-align:justify;text-align-last:justify">验收人</span><span style="font-size:14px;font-weight:600">：</span><div style="border-bottom:1px solid #333;width:160px"></div></div><div style="display:flex;align-items:baseline"><span style="font-size:14px;font-weight:600;white-space:nowrap;display:inline-block;width:80px;text-align:justify;text-align-last:justify">客户签字</span><span style="font-size:14px;font-weight:600">：</span><div style="border-bottom:1px solid #333;width:160px"></div></div></div>
+<div class="sign-area">
+<div class="sign-line"><span>验收人：</span><div></div></div>
+<div class="sign-line"><span>客户签字：</span><div></div></div>
+</div>
 </div>
 </body></html>`;
-    const win = window.open('', '_blank', 'width=800,height=900');
+    const win = window.open('', '_blank', 'width=1100,height=700');
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => win.print(), 300);
+    const imgs = win.document.querySelectorAll('img');
+    if (imgs.length === 0) {
+      setTimeout(() => win.print(), 200);
+    } else {
+      let loaded = 0;
+      const tryPrint = () => { loaded++; if (loaded >= imgs.length) setTimeout(() => win.print(), 100); };
+      imgs.forEach(img => {
+        if (img.complete) { tryPrint(); }
+        else { img.onload = tryPrint; img.onerror = tryPrint; }
+      });
+      setTimeout(() => win.print(), 3000);
+    }
   };
 
   return (
@@ -462,27 +1108,10 @@ ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px">
                 <span style={{ color: 'var(--text-light)' }}>收款码：</span>
                 {allQRCodes.map(qr => (
                   <label key={qr.id} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedQRIds.includes(qr.id)}
-                      onChange={() => toggleQR(qr.id)}
-                    />
+                    <input type="checkbox" checked={selectedQRIds.includes(qr.id)} onChange={() => toggleQR(qr.id)} />
                     {qr.name}
                   </label>
                 ))}
-              </>
-            )}
-            {imageUrl && (
-              <>
-                <span style={{ color: 'var(--text-light)', marginLeft: allQRCodes.length > 0 ? 8 : 0 }}>订单图片：</span>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={showOrderImage}
-                    onChange={() => setShowOrderImage(prev => !prev)}
-                  />
-                  显示
-                </label>
               </>
             )}
           </div>
@@ -491,8 +1120,8 @@ ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px">
 
         <div className="print-preview">
           <div className="print-header">
-            <h1>视觉创印广告物料制作清单</h1>
-            <p style={{ color: 'var(--text-light)', fontSize: 14 }}>订单号：#{order.id}</p>
+            <h1 style={{ fontSize: 22 }}>视觉创印广告物料制作清单</h1>
+            <p style={{ color: 'var(--text-light)', fontSize: 13 }}>订单号：#{order.id}</p>
           </div>
 
           <div className="print-info">
@@ -506,86 +1135,88 @@ ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px">
             </div>
           </div>
 
-          <table className="print-table">
-            <thead>
-              <tr>
-                <th>序号</th>
-                <th>商品名称</th>
-                <th>单位</th>
-                <th>单价</th>
-                <th>数量</th>
-                <th>小计</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-light)' }}>无商品明细</td></tr>
-              ) : items.map((item, idx) => (
-                <tr key={idx}>
-                  <td>{idx + 1}</td>
-                  <td>{item.product?.name || item.name || '-'}</td>
-                  <td>{item.unit || item.product?.unit || '-'}</td>
-                  <td>{fmt(item.unit_price || item.price)}</td>
-                  <td>{item.quantity || item.qty || 1}</td>
-                  <td>{fmt((item.unit_price || item.price || 0) * (item.quantity || item.qty || 1))}</td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="print-table" style={{ fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>商品名称</th>
+                  <th>耗材</th>
+                  <th>制作内容</th>
+                  <th>宽(m)</th>
+                  <th>高(m)</th>
+                  <th>数量</th>
+                  <th>面积</th>
+                  <th>单价</th>
+                  <th>单位</th>
+                  <th>金额</th>
+                  <th>备注</th>
+                  <th>图样</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr><td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-light)' }}>无明细</td></tr>
+                ) : items.map((item, idx) => {
+                  const w = parseFloat(item.width) || 0;
+                  const h = parseFloat(item.height) || 0;
+                  const area = item.unit === '平方米' ? (w * h).toFixed(2) + 'm²' : '-';
+                  const amt = parseFloat(item.amount) || 0;
+                  const cp = parseFloat(item.customer_price);
+                  const finalAmt = cp > 0 ? cp : amt;
+                  const mats = (() => { try { const m = typeof item.materials === 'string' ? JSON.parse(item.materials) : (item.materials || []); return m.map(x => x.name || x).filter(Boolean).join(', '); } catch { return ''; } })();
+                  const imgSrc = item.image ? (item.image.startsWith('http') ? item.image : `${window.location.origin}${item.image.startsWith('/') ? '' : '/'}${item.image}`) : '';
+                  return (
+                    <tr key={idx}>
+                      <td>{idx + 1}</td>
+                      <td>{item.name || '-'}</td>
+                      <td>{mats || '-'}</td>
+                      <td>{item.content || '-'}</td>
+                      <td>{w || '-'}</td>
+                      <td>{h || '-'}</td>
+                      <td>{item.quantity || 1}</td>
+                      <td>{area}</td>
+                      <td>{fmt(item.unit_price)}</td>
+                      <td>{item.unit || '-'}</td>
+                      <td style={{ fontWeight: 600 }}>{fmt(finalAmt)}</td>
+                      <td style={{ fontSize: 12 }}>{item.remark || ''}</td>
+                      <td>{imgSrc ? <img src={imgSrc} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 3 }} /> : '-'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-          <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '16px 20px', fontSize: 14, marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span>商品小计：</span><span>{fmt(subtotal)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 16, borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 6 }}>
-              <span>应收总计：</span><span>{fmt(total)}</span>
-            </div>
-            {discountAmt > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f39c12', fontWeight: 600, marginTop: 4 }}>
-                <span>优惠金额：</span><span>-{fmt(discountAmt)}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontWeight: 600, marginTop: 4 }}>
-              <span>实收金额：</span><span>{fmt(actual)}</span>
-            </div>
+          <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '14px 20px', fontSize: 14, marginBottom: 16, display: 'flex', justifyContent: 'flex-end', gap: 24, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <div><span style={{ color: 'var(--text-light)' }}>项目合计：</span><span style={{ fontWeight: 700 }}>{fmt(total)}</span></div>
+            {discountAmt > 0 && <div><span style={{ color: '#f39c12' }}>优惠：</span><span style={{ color: '#f39c12', fontWeight: 600 }}>-{fmt(discountAmt)}</span></div>}
+            {parseFloat(order.prepaid_amount) > 0 && <div><span style={{ color: 'var(--text-light)' }}>预付：</span><span style={{ fontWeight: 600 }}>{fmt(order.prepaid_amount)}</span></div>}
+            <div><span style={{ color: 'var(--success)', fontWeight: 700, fontSize: 16 }}>实收总计：{fmt(actual)}</span></div>
           </div>
 
           {notes && (
-            <div style={{ marginTop: 20, fontSize: 14 }}>
-              <strong>备注：</strong>{notes}
-            </div>
+            <div style={{ marginBottom: 16, fontSize: 14 }}><strong>备注：</strong>{notes}</div>
           )}
 
-          {/* 底部：左对齐图片 + 右下签字 */}
-          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               {enabledQRCodes.length > 0 && enabledQRCodes.map(qr => (
                 <div key={qr.id} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>💳 扫码支付</div>
-                  <img src={qr.url} alt={qr.name}
-                    style={{ width: 180, height: 180, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
+                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>扫码支付</div>
+                  <img src={qr.url} alt={qr.name} style={{ width: 140, height: 140, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
                   <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 3 }}>{qr.name}</p>
                 </div>
               ))}
-              {imageUrl && showOrderImage && (
-                <div style={{ textAlign: 'center', marginLeft: 20 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>📷 订单图片</div>
-                  <img src={imageUrl} alt="订单图片"
-                    style={{ width: 180, height: 180, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }} />
-                </div>
-              )}
             </div>
-            {/* 右 - 验收人 + 客户签字 */}
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: 200, gap: 24 }}>
+            <div style={{ display: 'flex', gap: 32 }}>
               <div style={{ display: 'flex', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, display: 'inline-block', width: 80, textAlign: 'justify', textAlignLast: 'justify' }}>验收人</span>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>：</span>
-                <div style={{ borderBottom: '1px solid #333', width: 160 }}></div>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>验收人：</span>
+                <div style={{ borderBottom: '1px solid #333', width: 140 }}></div>
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, display: 'inline-block', width: 80, textAlign: 'justify', textAlignLast: 'justify' }}>客户签字</span>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>：</span>
-                <div style={{ borderBottom: '1px solid #333', width: 160 }}></div>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>客户签字：</span>
+                <div style={{ borderBottom: '1px solid #333', width: 140 }}></div>
               </div>
             </div>
           </div>
@@ -601,42 +1232,29 @@ ${imageUrl && showOrderImage ? `<div style="text-align:center;margin-left:20px">
 function OrderFormView({ editId, onBack }) {
   const showToast = useToast();
   const [customers, setCustomers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [notes, setNotes] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
   const [discountAmount, setDiscountAmount] = useState('');
-  const [showProductModal, setShowProductModal] = useState(false);
+  const [prepaidAmount, setPrepaidAmount] = useState('');
   const [saving, setSaving] = useState(false);
-  const [imageUploading, setImageUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showQRManager, setShowQRManager] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [qrcodes, setQrcodes] = useState([]);
-  const [historyPrices, setHistoryPrices] = useState([]);
-  const [historyProductId, setHistoryProductId] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const historyRef = useRef(null);
 
-  // 点击外部关闭历史价格下拉
-  useEffect(() => {
-    if (!historyProductId) return;
-    const handleClick = (e) => {
-      if (historyRef.current && !historyRef.current.contains(e.target)) {
-        setHistoryProductId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [historyProductId]);
-
-  // Load customers (refresh when form is focused)
   const fetchCustomers = useCallback(() => {
     apiGet('/customer/list').then(j => setCustomers(j.data || j || [])).catch(() => {});
   }, []);
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
-  // Load QR codes from API
+  const fetchCategories = useCallback(() => {
+    apiGet('/product/categories').then(j => setCategories(j.data || j || [])).catch(() => {});
+  }, []);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
+
   const loadQRCodesFromAPI = useCallback(() => {
     apiGet('/qrcode/list').then(res => {
       if (res.code === 200) setQrcodes(res.data || []);
@@ -653,16 +1271,29 @@ function OrderFormView({ editId, onBack }) {
         const detail = j.data || j;
         setCustomerId(detail.customer_id || '');
         setNotes(detail.description || detail.notes || '');
-        setImageUrl(detail.image || '');
         setDiscountAmount(detail.discount_amount || '');
+        setPrepaidAmount(detail.prepaid_amount || '');
         if (detail.items && detail.items.length > 0) {
           setItems(detail.items.map(i => ({
-            product_id: i.product_id,
-            name: i.product?.name || i.name || '',
-            unit: i.product?.unit || i.unit || '',
-            unit_price: parseFloat(i.unit_price || i.price || 0),
-            cost_price: parseFloat(i.cost_price || i.product?.cost_price || 0),
-            quantity: parseInt(i.quantity || i.qty || 1),
+            _id: (i.id || Date.now()) + Math.random(),
+            name: i.name || '',
+            unit: i.unit || '平方米',
+            width: i.width || '',
+            height: i.height || '',
+            quantity: parseInt(i.quantity) || 1,
+            unit_price: i.unit_price || '',
+            customer_price: i.customer_price || '',
+            cost_details: (() => {
+              try { return typeof i.cost_details === 'string' ? JSON.parse(i.cost_details) : (i.cost_details || []); }
+              catch { return []; }
+            })(),
+            materials: (() => {
+              try { return typeof i.materials === 'string' ? JSON.parse(i.materials) : (i.materials || []); }
+              catch { return []; }
+            })(),
+            content: i.content || '',
+            remark: i.remark || '',
+            image: i.image || '',
           })));
         }
       })
@@ -671,96 +1302,52 @@ function OrderFormView({ editId, onBack }) {
   }, [editId, showToast]);
 
   // Calculations
-  const costTotal = items.reduce((sum, i) => sum + (parseFloat(i.cost_price) || 0) * (parseInt(i.quantity) || 0), 0);
-  const subtotal = items.reduce((sum, i) => sum + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0);
+  const costTotal = items.reduce((sum, i) => sum + calcCostPrice(i), 0);
+  const amountTotal = items.reduce((sum, i) => sum + getItemTotal(i), 0);
   const discount = parseFloat(discountAmount) || 0;
-  const total = subtotal;
-  const actualTotal = total - discount;
+  const actualTotal = amountTotal - discount;
+  const prepaid = parseFloat(prepaidAmount) || 0;
+  const pendingAmount = actualTotal - prepaid;
   const profit = actualTotal - costTotal;
 
-
-  const handleBack = () => {
-    if (dirty && !window.confirm('有未保存的修改，确定要返回吗？')) return;
-    onBack();
-  };
-
-  const handleAddProducts = (selected) => {
-    const newItems = [...items];
-    selected.forEach(p => {
-      const exists = newItems.find(i => i.product_id === p.id);
-      if (exists) {
-        exists.quantity += 1;
-      } else {
-        newItems.push({
-          product_id: p.id,
-          name: p.name,
-          unit: p.unit || '',
-          unit_price: parseFloat(p.price || 0),
-          cost_price: parseFloat(p.cost_price || 0),
-          quantity: 1,
-        });
-      }
-    });
-    setItems(newItems);
+  const addItem = () => {
+    setItems(prev => [...prev, createEmptyItem()]);
     setDirty(true);
   };
 
-  const removeItem = (productId) => {
-    setItems(prev => prev.filter(i => i.product_id !== productId));
+  const removeItem = (id) => {
+    setItems(prev => prev.filter(i => i._id !== id));
     setDirty(true);
   };
 
-  const updateItem = (productId, field, value) => {
+  const updateItem = (id, field, value) => {
     setItems(prev => prev.map(i => {
-      if (i.product_id !== productId) return i;
-      return { ...i, [field]: field === 'quantity' ? (parseInt(value) || 1) : (parseFloat(value) || 0) };
+      if (i._id !== id) return i;
+      if (field === 'quantity') return { ...i, [field]: parseInt(value) || 1 };
+      return { ...i, [field]: value };
     }));
     setDirty(true);
   };
 
-  const toggleHistoryPrices = async (productId) => {
-    if (historyProductId === productId) {
-      setHistoryProductId(null);
-      return;
-    }
-    setHistoryProductId(productId);
-    setHistoryLoading(true);
-    try {
-      const url = customerId
-        ? `/sales/history-prices/${productId}?customer_id=${customerId}`
-        : `/sales/history-prices/${productId}`;
-      const res = await apiGet(url);
-      setHistoryPrices(res.data || []);
-    } catch {
-      setHistoryPrices([]);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  const selectHistoryPrice = (productId, price) => {
-    updateItem(productId, 'unit_price', price);
-    setHistoryProductId(null);
-  };
-
-  const handleImageUpload = async (e) => {
+  const handleItemImageUpload = async (itemId, e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setImageUploading(true);
     try {
       const res = await apiUpload('/upload/image', file);
       if (res.code === 200 && res.data?.url) {
-        setImageUrl(res.data.url);
-        setDirty(true);
-        showToast('success', '上传成功', '图片已上传');
+        updateItem(itemId, 'image', res.data.url);
+        showToast('success', '图样上传成功');
       } else {
         showToast('error', '上传失败', res.message || '未知错误');
       }
     } catch (err) {
       showToast('error', '上传失败', err.message);
-    } finally {
-      setImageUploading(false);
     }
+  };
+
+  const handleBack = () => {
+    if (dirty && !window.confirm('有未保存的修改，确定要返回吗？')) return;
+    onBack();
   };
 
   const handleSubmit = async () => {
@@ -769,7 +1356,7 @@ function OrderFormView({ editId, onBack }) {
       return;
     }
     if (items.length === 0) {
-      showToast('warning', '提示', '请添加商品');
+      showToast('warning', '提示', '请添加项目');
       return;
     }
     setSaving(true);
@@ -779,12 +1366,28 @@ function OrderFormView({ editId, onBack }) {
         description: notes,
         discount_amount: discount,
         actual_amount: actualTotal,
-        image: imageUrl || '',
+        total_amount: amountTotal,
+        cost_total: costTotal,
+        profit: profit,
+        prepaid_amount: prepaid,
+        status: pendingAmount <= 0 && prepaid > 0 ? 'completed' : 'pending',
+        image: '',
         items: items.map(i => ({
-          product_id: i.product_id,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-          cost_price: i.cost_price,
+          name: i.name,
+          unit: i.unit,
+          width: parseFloat(i.width) || 0,
+          height: parseFloat(i.height) || 0,
+          quantity: parseInt(i.quantity) || 1,
+          unit_price: parseFloat(i.unit_price) || 0,
+          customer_price: parseFloat(i.customer_price) || 0,
+          cost_details: JSON.stringify(i.cost_details || []),
+          cost_price: calcCostPrice(i),
+          materials: JSON.stringify(i.materials || []),
+          area: calcArea(i),
+          amount: calcAmount(i),
+          content: i.content || '',
+          remark: i.remark || '',
+          image: i.image || '',
         })),
       };
       const url = editId ? `/sales/update/${editId}` : '/sales/create';
@@ -813,157 +1416,102 @@ function OrderFormView({ editId, onBack }) {
         ← 返回列表
       </button>
 
-      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 20 }}>
-        {editId ? `编辑客户清单 #${editId}` : '创建客户清单'}
-      </h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
+          {editId ? `编辑客户清单 #${editId}` : '创建客户清单'}
+        </h2>
+        <button
+          className="btn"
+          onClick={() => setShowCategoryModal(true)}
+          style={{ padding: '4px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          🏷️ 耗材分类
+        </button>
+      </div>
 
-      <div className="order-form-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, alignItems: 'start' }}>
-        {/* Left Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Products Section */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Items Section */}
           <div className="form-section" style={{ overflow: 'visible' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <h4 style={{ margin: 0 }}>选择商品</h4>
-              <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
-                + 添加商品
+              <h4 style={{ margin: 0 }}>📋 项目明细</h4>
+              <button className="btn btn-primary" onClick={addItem}>
+                + 添加项目
               </button>
             </div>
 
-            <table className="data-table" style={{ overflow: 'visible' }}>
-              <thead>
-                <tr>
-                  <th>商品</th>
-                  <th>单位</th>
-                  <th>单价</th>
-                  <th>数量</th>
-                  <th>小计</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: 40 }}>
-                      <div style={{ color: 'var(--text-light)' }}>
-                        <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>📦</div>
-                        <div>请点击上方按钮添加商品</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : items.map(item => (
-                  <tr key={item.product_id}>
-                    <td>{item.name}</td>
-                    <td style={{ color: 'var(--text-light)', fontSize: 13 }}>{item.unit || '-'}</td>
-                    <td style={{ position: 'relative' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={item.unit_price}
-                          onChange={e => updateItem(item.product_id, 'unit_price', e.target.value)}
-                          style={{ width: 100, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 14 }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => toggleHistoryPrices(item.product_id)}
-                          title="历史价格"
-                          style={{
-                            padding: '5px 8px', fontSize: 12, border: '1px solid var(--border)',
-                            borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: historyProductId === item.product_id ? 'var(--primary)' : 'var(--bg)',
-                            color: historyProductId === item.product_id ? '#fff' : 'var(--text-light)',
-                          }}
-                        >
-                          历史
-                        </button>
-                      </div>
-                      {historyProductId === item.product_id && (
-                        <div ref={historyRef} style={{
-                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                          background: 'var(--white)', border: '1px solid var(--border)',
-                          borderRadius: 8, boxShadow: 'var(--shadow-lg)', padding: 0,
-                          minWidth: 280, marginTop: 4,
-                        }}>
-                          <div style={{
-                            padding: '10px 14px', borderBottom: '1px solid var(--border)',
-                            fontSize: 13, fontWeight: 600, color: 'var(--text)',
-                          }}>
-                            历史价格记录
-                          </div>
-                          {historyLoading ? (
-                            <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-light)' }}>加载中...</div>
-                          ) : historyPrices.length === 0 ? (
-                            <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-light)' }}>暂无历史记录</div>
-                          ) : (
-                            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                              {historyPrices.map((hp, idx) => (
-                                <div
-                                  key={idx}
-                                  onClick={() => selectHistoryPrice(item.product_id, hp.unit_price)}
-                                  style={{
-                                    padding: '8px 14px', cursor: 'pointer', fontSize: 13,
-                                    borderBottom: idx < historyPrices.length - 1 ? '1px solid var(--border)' : 'none',
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    transition: 'background 0.15s',
-                                  }}
-                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                >
-                                  <div>
-                                    <span style={{ fontWeight: 600, color: 'var(--primary)', fontSize: 15 }}>
-                                      ¥{parseFloat(hp.unit_price).toFixed(2)}
-                                    </span>
-                                    <span style={{ marginLeft: 8, color: 'var(--text-lighter)', fontSize: 12 }}>
-                                      ×{hp.quantity}
-                                    </span>
-                                  </div>
-                                  <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-lighter)' }}>
-                                    <div>{hp.customer_name || '-'}</div>
-                                    <div>{hp.order_date ? hp.order_date.split(' ')[0] : '-'}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={e => updateItem(item.product_id, 'quantity', e.target.value)}
-                        style={{ width: 70, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 14 }}
-                      />
-                    </td>
-                    <td>{fmt(item.unit_price * item.quantity)}</td>
-                    <td>
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '4px 12px', fontSize: 13 }}
-                        onClick={() => removeItem(item.product_id)}
-                      >
-                        删除
-                      </button>
-                    </td>
-                  </tr>
+            {items.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: 40, border: '2px dashed var(--border)',
+                borderRadius: 'var(--radius)', color: 'var(--text-light)',
+              }}>
+                <div style={{ fontSize: 40, marginBottom: 8, opacity: 0.4 }}>📋</div>
+                <div style={{ marginBottom: 12 }}>暂无项目，点击上方按钮添加</div>
+                <button className="btn btn-primary" onClick={addItem}>+ 添加第一个项目</button>
+              </div>
+            ) : (
+              <>
+                {/* 表头 - 仅当有非编辑状态的行时显示 */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 0,
+                  background: '#f5f6fa', borderRadius: '6px 6px 0 0', fontSize: 12,
+                  fontWeight: 600, color: 'var(--text-light)', marginBottom: 0,
+                  border: '1px solid var(--border)', borderBottom: 'none',
+                }}>
+                  <div style={{ width: 28, flex: 'none', padding: '8px 4px', textAlign: 'center' }}>#</div>
+                  <div style={{ flex: 2, minWidth: 60, padding: '8px 4px' }}>商品名称</div>
+                  <div style={{ flex: 1.5, minWidth: 50, padding: '8px 4px' }}>耗材</div>
+                  <div style={{ flex: 1.5, minWidth: 50, padding: '8px 4px' }}>制作内容</div>
+                  <div style={{ flex: 1, minWidth: 44, padding: '8px 4px', textAlign: 'center' }}>宽(m)</div>
+                  <div style={{ flex: 1, minWidth: 44, padding: '8px 4px', textAlign: 'center' }}>高(m)</div>
+                  <div style={{ width: 36, flex: 'none', padding: '8px 4px', textAlign: 'center' }}>数量</div>
+                  <div style={{ flex: 1, minWidth: 50, padding: '8px 4px', textAlign: 'center' }}>面积</div>
+                  <div style={{ flex: 1, minWidth: 52, padding: '8px 4px', textAlign: 'center' }}>成本价</div>
+                  <div style={{ flex: 1, minWidth: 46, padding: '8px 4px', textAlign: 'center' }}>单价</div>
+                  <div style={{ width: 56, flex: 'none', padding: '8px 4px', textAlign: 'center' }}>单位</div>
+                  <div style={{ flex: 1, minWidth: 52, padding: '8px 4px', textAlign: 'right' }}>金额</div>
+                  <div style={{ flex: 1.5, minWidth: 50, padding: '8px 4px' }}>备注</div>
+                  <div style={{ width: 48, flex: 'none', padding: '8px 4px', textAlign: 'center' }}>图样</div>
+                  <div style={{ padding: '8px 4px', flexShrink: 0, textAlign: 'center', width: 96 }}>操作</div>
+                </div>
+                {items.map((item, idx) => (
+                  <ItemCard
+                    key={item._id}
+                    item={item}
+                    index={idx}
+                    categories={categories}
+                    onUpdate={updateItem}
+                    onRemove={removeItem}
+                    onImageUpload={handleItemImageUpload}
+                    defaultEditing={!!item._isNew}
+                  />
                 ))}
-              </tbody>
-            </table>
+              </>
+            )}
+
+            {items.length > 0 && (
+              <button
+                className="btn"
+                onClick={addItem}
+                style={{
+                  width: '100%', padding: '10px', border: '2px dashed var(--border)',
+                  background: 'transparent', fontSize: 14, color: 'var(--text-light)',
+                  cursor: 'pointer', borderRadius: 'var(--radius)',
+                }}
+              >
+                + 继续添加项目
+              </button>
+            )}
           </div>
 
           {/* Customer Info Section */}
           <div className="form-section">
             <h4>👤 客户信息</h4>
-
             <CustomerSelector
               customers={customers}
               value={customerId}
               onChange={v => { setCustomerId(v); setDirty(true); }}
               onRefresh={fetchCustomers}
             />
-
             <div className="form-group">
               <label>订单备注</label>
               <textarea
@@ -973,64 +1521,28 @@ function OrderFormView({ editId, onBack }) {
                 onChange={e => { setNotes(e.target.value); setDirty(true); }}
               />
             </div>
-
-            {/* 订单图片 - 独立区域 */}
-            <div className="form-group">
-              <label>📷 订单图片/附件</label>
-              <input
-                type="file"
-                accept="image/*"
-                disabled={imageUploading}
-                onChange={handleImageUpload}
-              />
-              {imageUploading && <span style={{ fontSize: 12, color: 'var(--text-light)' }}>上传中...</span>}
-              {imageUrl && (
-                <div style={{ marginTop: 10 }}>
-                  <img
-                    src={imageUrl}
-                    alt="订单图片"
-                    style={{ maxWidth: 200, maxHeight: 200, borderRadius: 6, border: '1px solid var(--border)', display: 'block' }}
-                  />
-                  <button
-                    className="btn btn-danger"
-                    style={{ marginTop: 6, padding: '4px 14px', fontSize: 12 }}
-                    onClick={async () => {
-                      setImageUrl('');
-                      setDirty(true);
-                      // 编辑模式下直接保存到后端
-                      if (editId) {
-                        try {
-                          await apiPost(`/sales/update/${editId}`, { image: '' });
-                          showToast('success', '已删除', '订单图片已删除');
-                        } catch (err) {
-                          showToast('error', '删除失败', err.message);
-                        }
-                      }
-                    }}
-                  >
-                    删除图片
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* 收款二维码 - 独立区域 */}
+          {/* 耗材分类管理弹窗 */}
+          {showCategoryModal && (
+            <CategoryManagerModal
+              categories={categories}
+              onRefresh={fetchCategories}
+              onClose={() => setShowCategoryModal(false)}
+            />
+          )}
+
+          {/* QR Codes Section */}
           <div className="form-section">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h4 style={{ margin: 0 }}>💳 收款二维码</h4>
-              <button className="btn" onClick={() => setShowQRManager(true)}>
-                管理二维码
-              </button>
+              <button className="btn" onClick={() => setShowQRManager(true)}>管理二维码</button>
             </div>
-
             {qrcodes.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-light)', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
                 <div style={{ fontSize: 28, marginBottom: 6, opacity: 0.4 }}>💳</div>
                 <div style={{ fontSize: 13 }}>暂无收款二维码</div>
-                <button className="btn btn-primary" style={{ marginTop: 10, fontSize: 12, padding: '6px 14px' }} onClick={() => setShowQRManager(true)}>
-                  去添加
-                </button>
+                <button className="btn btn-primary" style={{ marginTop: 10, fontSize: 12, padding: '6px 14px' }} onClick={() => setShowQRManager(true)}>去添加</button>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
@@ -1052,100 +1564,81 @@ function OrderFormView({ editId, onBack }) {
           </div>
         </div>
 
-        {/* Right Column - Sticky Summary */}
-        <div className="sticky-summary">
-          <div className="form-section">
-            <h4>💵 价格汇总</h4>
-
-            <div className="form-group">
-              <label>成本小计</label>
-              <input
-                type="text"
-                readOnly
-                value={fmt(costTotal)}
+        {/* 价格汇总 - 横向布局 */}
+        <div className="form-section">
+          <h4>💵 价格汇总</h4>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+              <label>成本合计</label>
+              <input type="text" readOnly value={fmt(costTotal)}
                 style={{ background: '#fff3cd', borderColor: '#ffc107', fontWeight: 600 }}
               />
             </div>
-
-            <div className="form-group">
-              <label>客户价格小计</label>
-              <input
-                type="text"
-                readOnly
-                value={fmt(subtotal)}
-                style={{ background: '#f7fafc' }}
-              />
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+              <label>项目金额合计</label>
+              <input type="text" readOnly value={fmt(amountTotal)} style={{ background: '#f7fafc' }} />
             </div>
-
-            <div className="form-group">
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
               <label>预计利润</label>
-              <input
-                type="text"
-                readOnly
-                value={fmt(profit)}
+              <input type="text" readOnly value={fmt(profit)}
                 style={{
-                  background: '#d1fae5',
-                  borderColor: '#10b981',
-                  color: '#065f46',
+                  background: profit >= 0 ? '#d1fae5' : '#fef2f2',
+                  borderColor: profit >= 0 ? '#10b981' : '#ef4444',
+                  color: profit >= 0 ? '#065f46' : '#b91c1c',
                   fontWeight: 600,
                 }}
               />
             </div>
-
-            <div style={{ margin: '20px 0', textAlign: 'center', background: 'var(--bg)', borderRadius: 8, padding: '16px 12px' }}>
-              <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 6 }}>应收总计</div>
-              <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary)' }}>{fmt(total)}</div>
-            </div>
-
-            <div className="form-group">
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
               <label>优惠金额</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="输入优惠金额（无优惠留空）"
+                placeholder="无优惠留空"
                 value={discountAmount}
                 onChange={e => { setDiscountAmount(e.target.value); setDirty(true); }}
               />
             </div>
-
-            <div className="form-group">
-              <label>实收金额</label>
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+              <label>预付金额</label>
               <input
-                type="text"
-                readOnly
-                value={fmt(actualTotal)}
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="客户预付金额"
+                value={prepaidAmount}
+                onChange={e => { setPrepaidAmount(e.target.value); setDirty(true); }}
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+              <label>待付金额</label>
+              <input type="text" readOnly value={fmt(pendingAmount > 0 ? pendingAmount : 0)}
                 style={{
-                  background: discount > 0 ? '#fef3c7' : '#f7fafc',
+                  background: pendingAmount > 0 ? '#fef2f2' : '#d1fae5',
                   fontWeight: 600,
-                  borderColor: discount > 0 ? '#f59e0b' : undefined,
+                  borderColor: pendingAmount > 0 ? '#ef4444' : '#10b981',
+                  color: pendingAmount > 0 ? '#b91c1c' : '#065f46',
                 }}
               />
-              {discount > 0 && (
-                <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
-                  已优惠 {fmt(discount)}
-                </div>
+              {pendingAmount <= 0 && prepaid > 0 && (
+                <div style={{ fontSize: 11, color: '#10b981', marginTop: 4 }}>已付清</div>
               )}
             </div>
-
-            <button
-              className="btn btn-success"
-              style={{ width: '100%', padding: '12px 20px', fontSize: 15, fontWeight: 600, marginTop: 10 }}
-              onClick={handleSubmit}
-              disabled={saving}
-            >
-              {saving ? '提交中...' : '✓ 提交订单'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 16px', background: 'var(--bg)', borderRadius: 8, minWidth: 180 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-light)' }}>实收总计</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--primary)' }}>{fmt(actualTotal)}</span>
+            </div>
           </div>
+          <button
+            className="btn btn-success"
+            style={{ width: '100%', padding: '12px 20px', fontSize: 15, fontWeight: 600, marginTop: 16 }}
+            onClick={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? '提交中...' : '✓ 提交订单'}
+          </button>
         </div>
-      </div>
-
-      {showProductModal && (
-        <ProductSelectorModal
-          onSelect={handleAddProducts}
-          onClose={() => setShowProductModal(false)}
-        />
-      )}
 
       {showQRManager && (
         <QRCodeManagerModal
@@ -1164,6 +1657,8 @@ function OrderListView({ onNew, onEdit, onPrint }) {
   const showToast = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState('date_desc');
 
   const fetchOrders = useCallback(() => {
     setLoading(true);
@@ -1174,6 +1669,43 @@ function OrderListView({ onNew, onEdit, onPrint }) {
   }, [showToast]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  const filtered = orders.filter(o => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    const actualAmt = parseFloat(o.actual_amount || o.total_amount) || 0;
+    return (
+      String(o.id).includes(q) ||
+      (o.customer?.name || '').toLowerCase().includes(q) ||
+      (o.order_date || '').includes(q) ||
+      (o.description || '').toLowerCase().includes(q) ||
+      String(actualAmt.toFixed(2)).includes(q) ||
+      (o.status === 'completed' && '已完成'.includes(q)) ||
+      (o.status !== 'completed' && '待确认'.includes(q))
+    );
+  }).sort((a, b) => {
+    const aAmt = parseFloat(a.actual_amount || a.total_amount) || 0;
+    const bAmt = parseFloat(b.actual_amount || b.total_amount) || 0;
+    switch (sortKey) {
+      case 'date_desc': return (b.id || 0) - (a.id || 0);
+      case 'date_asc': return (a.id || 0) - (b.id || 0);
+      case 'amount_desc': return bAmt - aAmt;
+      case 'amount_asc': return aAmt - bAmt;
+      case 'status_pending': {
+        const aP = a.status === 'completed' ? 1 : 0;
+        const bP = b.status === 'completed' ? 1 : 0;
+        return aP - bP || (b.id || 0) - (a.id || 0);
+      }
+      case 'status_completed': {
+        const aC = a.status === 'completed' ? 0 : 1;
+        const bC = b.status === 'completed' ? 0 : 1;
+        return aC - bC || (b.id || 0) - (a.id || 0);
+      }
+      default: return 0;
+    }
+  });
+
+  const hasAnyDiscount = filtered.some(o => parseFloat(o.discount_amount) > 0);
 
   const handleDelete = async (id) => {
     if (!window.confirm(`确定要删除订单 #${id} 吗？`)) return;
@@ -1194,67 +1726,128 @@ function OrderListView({ onNew, onEdit, onPrint }) {
     return <div className="loading">加载中...</div>;
   }
 
+  const hasAnyUpdate = filtered.some(o => o.updated_at && o.updated_at !== o.created_at);
+  const colCount = (hasAnyDiscount ? 10 : 9) + (hasAnyUpdate ? 1 : 0);
+
   return (
     <div>
       <div className="page-header">
         <h2>客户清单管理</h2>
-        <button className="btn btn-primary" onClick={onNew}>+ 新建客户清单</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="搜索订单号/客户/金额..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ padding: '7px 12px 7px 32px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13, width: 200, outline: 'none' }}
+            />
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-lighter)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+          </div>
+          <select
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value)}
+            style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13, background: 'var(--white)', cursor: 'pointer', outline: 'none' }}
+          >
+            <option value="date_desc">日期 新→旧</option>
+            <option value="date_asc">日期 旧→新</option>
+            <option value="amount_desc">实收 高→低</option>
+            <option value="amount_asc">实收 低→高</option>
+            <option value="status_pending">待付优先</option>
+            <option value="status_completed">已完成优先</option>
+          </select>
+          <button className="btn btn-primary" onClick={onNew}>+ 新建客户清单</button>
+        </div>
       </div>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>订单号</th>
-            <th>客户</th>
-            <th>订单日期</th>
-            <th>总成本</th>
-            <th>总金额</th>
-            <th>利润</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.length === 0 ? (
+      <div style={{ overflowX: 'auto' }}>
+        <table className="data-table" style={{ minWidth: 900 }}>
+          <thead>
             <tr>
-              <td colSpan={7}>
-                <div className="empty-state">
-                  <div className="empty-state-icon">💰</div>
-                  <div className="empty-state-text">暂无客户清单数据</div>
-                </div>
-              </td>
+              <th style={{ whiteSpace: 'nowrap' }}>订单号</th>
+              <th style={{ whiteSpace: 'nowrap' }}>客户</th>
+              {hasAnyUpdate && <th style={{ whiteSpace: 'nowrap' }}>更新时间</th>}
+              <th style={{ whiteSpace: 'nowrap' }}>订单日期</th>
+              <th style={{ whiteSpace: 'nowrap' }}>成本</th>
+              <th style={{ whiteSpace: 'nowrap' }}>总金额</th>
+              {hasAnyDiscount && <th style={{ whiteSpace: 'nowrap' }}>优惠</th>}
+              <th style={{ whiteSpace: 'nowrap' }}>利润</th>
+              <th style={{ whiteSpace: 'nowrap' }}>实收</th>
+              <th style={{ whiteSpace: 'nowrap' }}>状态</th>
+              <th style={{ whiteSpace: 'nowrap' }}>操作</th>
             </tr>
-          ) : orders.map(order => {
-            const costTotal = order.cost_total_calculated || order.cost_total || 0;
-            const profitVal = order.profit_calculated || order.profit || 0;
-            const profitNum = parseFloat(profitVal);
-            return (
-              <tr key={order.id}>
-                <td style={{ fontWeight: 700 }}>#{order.id}</td>
-                <td>{order.customer?.name || '-'}</td>
-                <td>{order.order_date || '-'}</td>
-                <td style={{ color: 'var(--warning)' }}>{fmt(costTotal)}</td>
-                <td style={{ fontWeight: 700 }}>{fmt(order.total_amount)}</td>
-                <td style={{ fontWeight: 700, color: profitNum >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                  {fmt(profitVal)}
-                </td>
-                <td>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn" style={{ padding: '5px 14px', fontSize: 13 }} onClick={() => onEdit(order.id)}>
-                      编辑
-                    </button>
-                    <button className="btn" style={{ padding: '5px 14px', fontSize: 13 }} onClick={() => onPrint(order.id)}>
-                      查看/打印
-                    </button>
-                    <button className="btn btn-danger" style={{ padding: '5px 14px', fontSize: 13 }} onClick={() => handleDelete(order.id)}>
-                      删除
-                    </button>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={colCount}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon">{search ? '🔍' : '📋'}</div>
+                    <div className="empty-state-text">{search ? `未找到 "${search}" 相关订单` : '暂无客户清单数据'}</div>
                   </div>
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ) : filtered.map(order => {
+              const costVal = parseFloat(order.cost_total) || 0;
+              const profitVal = parseFloat(order.profit) || 0;
+              const totalAmt = parseFloat(order.actual_amount || order.total_amount) || 0;
+              const discountVal = parseFloat(order.discount_amount) || 0;
+              const prepaidAmt = parseFloat(order.prepaid_amount) || 0;
+              const pendingAmt = totalAmt - prepaidAmt;
+              const isCompleted = order.status === 'completed';
+              return (
+                <tr key={order.id}>
+                  <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>#{order.id}</td>
+                  <td style={{ whiteSpace: 'nowrap', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.customer?.name}>{order.customer?.name || '-'}</td>
+                  {hasAnyUpdate && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-light)' }}>{order.updated_at || '-'}</td>}
+                  <td style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{order.order_date || '-'}</td>
+                  <td style={{ color: '#d97706', whiteSpace: 'nowrap' }}>{fmt(costVal)}</td>
+                  <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(order.total_amount)}</td>
+                  {hasAnyDiscount && <td style={{ color: '#f39c12', fontWeight: 600, whiteSpace: 'nowrap' }}>{discountVal > 0 ? `-${fmt(discountVal)}` : '-'}</td>}
+                  <td style={{ fontWeight: 700, whiteSpace: 'nowrap', color: profitVal >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    {fmt(profitVal)}
+                  </td>
+                  <td style={{ fontWeight: 600, color: '#0369a1', whiteSpace: 'nowrap' }}>{fmt(totalAmt)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {isCompleted ? (
+                      <span style={{ color: '#10b981', fontWeight: 600, fontSize: 13 }}>✓ 已完成</span>
+                    ) : pendingAmt > 0 ? (
+                      <span style={{ color: '#ef4444', fontWeight: 600, fontSize: 13 }}>待付{fmt(pendingAmt)}</span>
+                    ) : (
+                      <span style={{ color: '#6b7280', fontSize: 13 }}>待确认</span>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
+                      <button
+                        className={isCompleted ? 'btn' : 'btn btn-success'}
+                        style={{ padding: '4px 10px', fontSize: 12 }}
+                        onClick={async () => {
+                          const newStatus = isCompleted ? 'pending' : 'completed';
+                          try {
+                            const res = await apiPost(`/sales/status/${order.id}`, { status: newStatus });
+                            if (res.code === 200) {
+                              showToast('success', '成功', isCompleted ? '已取消完成' : '订单已完成');
+                              fetchOrders();
+                            }
+                          } catch (err) {
+                            showToast('error', '操作失败', err.message);
+                          }
+                        }}
+                      >
+                        {isCompleted ? '取消完成' : '完成'}
+                      </button>
+                      <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onEdit(order.id)}>编辑</button>
+                      <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onPrint(order.id)}>查看/打印</button>
+                      <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleDelete(order.id)}>删除</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1262,58 +1855,40 @@ function OrderListView({ onNew, onEdit, onPrint }) {
 // ============================================================================
 // Main Component
 // ============================================================================
-export default function SalesOrderPage() {
-  const [view, setView] = useState('list'); // 'list' | 'form'
+export default function SalesOrderPage({ jumpToOrderId, onJumpHandled }) {
+  const [view, setView] = useState('list');
   const [editId, setEditId] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
   const showToast = useToast();
 
-  const handleNew = () => {
-    setEditId(null);
-    setView('form');
-  };
-
-  const handleEdit = (id) => {
-    setEditId(id);
-    setView('form');
-  };
+  const handleNew = () => { setEditId(null); setView('form'); };
+  const handleEdit = (id) => { setEditId(id); setView('form'); };
 
   const handlePrint = async (id) => {
     try {
       const res = await apiGet(`/sales/detail/${id}`);
-      const detail = res.data || res;
-      setPrintOrder(detail);
+      setPrintOrder(res.data || res);
     } catch (err) {
       showToast('error', '加载失败', err.message);
     }
   };
 
-  const handleBackToList = () => {
-    setView('list');
-    setEditId(null);
-  };
+  const handleBackToList = () => { setView('list'); setEditId(null); };
+
+  // Handle jump from other pages (e.g. CustomerPage debt link)
+  useEffect(() => {
+    if (jumpToOrderId) {
+      handlePrint(jumpToOrderId);
+      if (onJumpHandled) onJumpHandled();
+    }
+    // eslint-disable-next-line
+  }, [jumpToOrderId]);
 
   return (
     <>
-      {view === 'list' && (
-        <OrderListView
-          onNew={handleNew}
-          onEdit={handleEdit}
-          onPrint={handlePrint}
-        />
-      )}
-      {view === 'form' && (
-        <OrderFormView
-          editId={editId}
-          onBack={handleBackToList}
-        />
-      )}
-      {printOrder && (
-        <PrintPreviewModal
-          order={printOrder}
-          onClose={() => setPrintOrder(null)}
-        />
-      )}
+      {view === 'list' && <OrderListView onNew={handleNew} onEdit={handleEdit} onPrint={handlePrint} />}
+      {view === 'form' && <OrderFormView editId={editId} onBack={handleBackToList} />}
+      {printOrder && <PrintPreviewModal order={printOrder} onClose={() => setPrintOrder(null)} />}
     </>
   );
 }

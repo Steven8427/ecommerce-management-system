@@ -1,18 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api';
 import { useToast } from './Toast';
 
 const fmt = v => '¥' + parseFloat(v || 0).toFixed(2);
 
-const TYPE_LABELS = {
-  manual_add: { text: '手动增加', color: '#27ae60' },
-  manual_sub: { text: '手动减少', color: '#e74c3c' },
-  manual_set: { text: '直接设定', color: '#f39c12' },
-  order_deduct: { text: '订单扣款', color: '#8e44ad' },
-  order_refund: { text: '订单退回', color: '#3498db' },
-};
-
-function CustomerPage() {
+function CustomerPage({ onNavigateToOrder }) {
   const showToast = useToast();
   const [tab, setTab] = useState('customers');
 
@@ -22,31 +14,20 @@ function CustomerPage() {
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [debtsMap, setDebtsMap] = useState({});
+  const [expandedDebt, setExpandedDebt] = useState(null);
 
-  // 表单
   const [custForm, setCustForm] = useState({ name: '', phone: '', address: '', level_id: '' });
   const [levelForm, setLevelForm] = useState({ name: '', description: '' });
 
-  // 余额操作
-  const [balanceModal, setBalanceModal] = useState(null); // { customer, type: 'add'|'sub'|'set' }
-  const [balanceAmount, setBalanceAmount] = useState('');
-  const [balanceReason, setBalanceReason] = useState('');
-  const [balanceSaving, setBalanceSaving] = useState(false);
-
-  // 余额记录
-  const [recordsModal, setRecordsModal] = useState(null); // customer obj
-  const [records, setRecords] = useState([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
-
-  useEffect(() => { fetchCustomers(); fetchLevels(); // eslint-disable-next-line
+  useEffect(() => { fetchCustomers(); fetchLevels(); fetchDebts(); // eslint-disable-next-line
   }, []);
 
-  // 当组件变为可见时自动刷新（从其他tab切回来时）
   const containerRef = useRef(null);
   useEffect(() => {
     const fn = fetchCustomers;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) fn(); },
+      ([entry]) => { if (entry.isIntersecting) { fn(); fetchDebts(); } },
       { threshold: 0.1 }
     );
     const el = containerRef.current;
@@ -76,12 +57,23 @@ function CustomerPage() {
     }
   };
 
+  const fetchDebts = async () => {
+    try {
+      const res = await apiGet('/customer/debts');
+      const list = res.data || [];
+      const map = {};
+      list.forEach(item => { map[item.customer_id] = item; });
+      setDebtsMap(map);
+    } catch (err) {
+      // silently fail — debts are supplementary info
+    }
+  };
+
   const getLevelName = (levelId) => {
     const level = levels.find(l => l.id === levelId);
     return level ? level.name : '-';
   };
 
-  // 弹窗操作
   const openAddCustomer = () => {
     setCustForm({ name: '', phone: '', address: '', level_id: '' });
     setModal({ type: 'add', target: 'customer' });
@@ -100,7 +92,6 @@ function CustomerPage() {
   };
   const closeModal = () => setModal(null);
 
-  // 保存客户
   const saveCustomer = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -122,7 +113,6 @@ function CustomerPage() {
     }
   };
 
-  // 保存等级
   const saveLevel = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -143,7 +133,6 @@ function CustomerPage() {
     }
   };
 
-  // 删除
   const handleDelete = async () => {
     try {
       if (deleteConfirm.target === 'customer') {
@@ -159,76 +148,6 @@ function CustomerPage() {
       showToast('error', '删除失败', err.message);
     } finally {
       setDeleteConfirm(null);
-    }
-  };
-
-  // ── 余额操作 ──
-  const [balanceType, setBalanceType] = useState('add');
-
-  const openBalanceModal = async (customer) => {
-    setBalanceModal({ customer });
-    setBalanceAmount('');
-    setBalanceReason('');
-    setBalanceType('add');
-    // 同时加载记录
-    setRecordsLoading(true);
-    try {
-      const res = await apiGet(`/balance/records?customer_id=${customer.id}`);
-      setRecords(res.data || []);
-    } catch {
-      setRecords([]);
-    } finally {
-      setRecordsLoading(false);
-    }
-  };
-
-  const submitBalance = async () => {
-    const amt = parseFloat(balanceAmount);
-    if (isNaN(amt) || amt < 0) {
-      showToast('warning', '请输入有效金额');
-      return;
-    }
-    setBalanceSaving(true);
-    try {
-      const typeMap = { add: 'manual_add', sub: 'manual_sub', set: 'manual_set' };
-      const res = await apiPost('/balance/adjust', {
-        customer_id: balanceModal.customer.id,
-        type: typeMap[balanceType],
-        amount: amt,
-        reason: balanceReason,
-      });
-      if (res.code === 200) {
-        showToast('success', '操作成功');
-        setBalanceAmount('');
-        setBalanceReason('');
-        await fetchCustomers();
-        // 刷新余额和记录
-        const updatedCustomers = await apiGet('/customer/list');
-        const cList = updatedCustomers.data || updatedCustomers || [];
-        const updated = cList.find(c => c.id === balanceModal.customer.id);
-        if (updated) setBalanceModal({ customer: updated });
-        const recRes = await apiGet(`/balance/records?customer_id=${balanceModal.customer.id}`);
-        setRecords(recRes.data || []);
-      } else {
-        showToast('error', '操作失败', res.message);
-      }
-    } catch (err) {
-      showToast('error', '操作失败', err.message);
-    } finally {
-      setBalanceSaving(false);
-    }
-  };
-
-  const openRecordsModal = async (customer) => {
-    setRecordsModal(customer);
-    setRecordsLoading(true);
-    try {
-      const res = await apiGet(`/balance/records?customer_id=${customer.id}`);
-      setRecords(res.data || []);
-    } catch {
-      setRecords([]);
-    } finally {
-      setRecordsLoading(false);
     }
   };
 
@@ -253,7 +172,7 @@ function CustomerPage() {
         </button>
       </div>
 
-      {/* ── 客户列表 ── */}
+      {/* 客户列表 */}
       {tab === 'customers' && (
         <>
           {loading && <div className="loading">加载中...</div>}
@@ -266,7 +185,7 @@ function CustomerPage() {
                   <th>电话</th>
                   <th>地址</th>
                   <th>等级</th>
-                  <th>余额</th>
+                  <th>待支付</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -274,39 +193,102 @@ function CustomerPage() {
                 {customers.length === 0 && (
                   <tr><td colSpan={7}><div className="empty-state"><div className="empty-state-icon">👥</div><div className="empty-state-text">暂无客户数据</div></div></td></tr>
                 )}
-                {customers.map(c => (
-                  <tr key={c.id}>
-                    <td>{c.id}</td>
-                    <td style={{ fontWeight: 600 }}>{c.name}</td>
-                    <td>{c.phone || '-'}</td>
-                    <td>{c.address || '-'}</td>
-                    <td>{getLevelName(c.level_id)}</td>
-                    <td>
-                      <span style={{
-                        fontWeight: 700,
-                        fontSize: 15,
-                        color: parseFloat(c.balance || 0) >= 0 ? '#27ae60' : '#e74c3c',
-                      }}>
-                        {fmt(c.balance)}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEditCustomer(c)}>编辑</button>
-                        <button className="btn" style={{ padding: '4px 10px', fontSize: 12, background: '#f0fdf4', color: '#166534', borderColor: '#86efac' }} onClick={() => openBalanceModal(c)}>金额</button>
-                        <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openRecordsModal(c)}>记录</button>
-                        <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setDeleteConfirm({ target: 'customer', id: c.id })}>删除</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {customers.map(c => {
+                  const debt = debtsMap[c.id];
+                  const isExpanded = expandedDebt === c.id;
+                  return (
+                    <React.Fragment key={c.id}>
+                      <tr style={debt ? { background: isExpanded ? 'var(--primary-bg, #eef2ff)' : undefined } : undefined}>
+                        <td>{c.id}</td>
+                        <td style={{ fontWeight: 600 }}>{c.name}</td>
+                        <td>{c.phone || '-'}</td>
+                        <td>{c.address || '-'}</td>
+                        <td>{getLevelName(c.level_id)}</td>
+                        <td>
+                          {debt ? (
+                            <button
+                              onClick={() => setExpandedDebt(isExpanded ? null : c.id)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                padding: '3px 10px', border: 'none', borderRadius: 20,
+                                background: isExpanded ? 'var(--danger, #ef4444)' : '#fef2f2',
+                                color: isExpanded ? '#fff' : '#dc2626',
+                                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.2s',
+                              }}
+                            >
+                              <span style={{ fontSize: 11 }}>⚠</span>
+                              {fmt(debt.total_owed)}
+                              <span style={{ fontSize: 10, opacity: 0.8 }}>({debt.orders.length}单)</span>
+                              <span style={{ fontSize: 10, transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▼</span>
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--success, #10b981)', fontSize: 12, fontWeight: 500 }}>已结清</span>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openEditCustomer(c)}>编辑</button>
+                            <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setDeleteConfirm({ target: 'customer', id: c.id })}>删除</button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && debt && (
+                        <tr>
+                          <td colSpan={7} style={{ padding: 0, background: '#fef2f2' }}>
+                            <div style={{ padding: '12px 20px 16px' }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: '#dc2626', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span>📋</span> {c.name} 的待支付明细 — 共计 {fmt(debt.total_owed)}
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {debt.orders.map(o => (
+                                  <div key={o.order_id} style={{
+                                    display: 'flex', alignItems: 'center', gap: 12,
+                                    padding: '10px 14px', background: '#fff', borderRadius: 8,
+                                    border: '1px solid #fecaca',
+                                    fontSize: 13,
+                                  }}>
+                                    <span style={{ color: 'var(--text-lighter)', fontSize: 12, whiteSpace: 'nowrap' }}>#{o.order_id}</span>
+                                    <span style={{ color: 'var(--text-light)', fontSize: 12, whiteSpace: 'nowrap' }}>{(o.order_date || '').slice(0, 10)}</span>
+                                    <span style={{ flex: 1, color: 'var(--text)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {o.item_names || o.description || '-'}
+                                    </span>
+                                    <span style={{ fontSize: 12, color: 'var(--text-light)', whiteSpace: 'nowrap' }}>
+                                      实收 {fmt(o.actual_amount)} - 已付 {fmt(o.prepaid_amount)}
+                                    </span>
+                                    <span style={{ fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap', minWidth: 70, textAlign: 'right' }}>
+                                      待付 {fmt(o.owed)}
+                                    </span>
+                                    <button
+                                      onClick={() => onNavigateToOrder && onNavigateToOrder(o.order_id)}
+                                      style={{
+                                        padding: '3px 10px', border: '1px solid var(--primary, #4f46e5)',
+                                        borderRadius: 5, background: 'transparent',
+                                        color: 'var(--primary, #4f46e5)', fontSize: 11, fontWeight: 600,
+                                        cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s',
+                                      }}
+                                      onMouseEnter={e => { e.target.style.background = 'var(--primary, #4f46e5)'; e.target.style.color = '#fff'; }}
+                                      onMouseLeave={e => { e.target.style.background = 'transparent'; e.target.style.color = 'var(--primary, #4f46e5)'; }}
+                                    >
+                                      查看订单
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
         </>
       )}
 
-      {/* ── 等级列表 ── */}
+      {/* 等级列表 */}
       {tab === 'levels' && (
         <table className="data-table">
           <thead>
@@ -333,7 +315,7 @@ function CustomerPage() {
         </table>
       )}
 
-      {/* ── 弹窗：添加/编辑客户 ── */}
+      {/* 弹窗：添加/编辑客户 */}
       {modal && modal.target === 'customer' && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -369,7 +351,7 @@ function CustomerPage() {
         </div>
       )}
 
-      {/* ── 弹窗：添加/编辑等级 ── */}
+      {/* 弹窗：添加/编辑等级 */}
       {modal && modal.target === 'level' && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -394,172 +376,7 @@ function CustomerPage() {
         </div>
       )}
 
-      {/* ── 弹窗：金额管理（操作+记录合一） ── */}
-      {balanceModal && (
-        <div className="modal-overlay" onClick={() => setBalanceModal(null)}>
-          <div className="modal-content" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>💰 金额管理 — {balanceModal.customer.name}</h3>
-              <button className="close-btn" onClick={() => setBalanceModal(null)}>×</button>
-            </div>
-            <div style={{ padding: '0 24px 24px' }}>
-              {/* 当前余额 */}
-              <div style={{ marginBottom: 20, padding: 16, background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-light)' }}>当前余额</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: parseFloat(balanceModal.customer.balance || 0) >= 0 ? '#27ae60' : '#e74c3c' }}>
-                  {fmt(balanceModal.customer.balance)}
-                </div>
-              </div>
-
-              {/* 操作区 */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                {[
-                  { key: 'add', label: '+ 增加', color: '#27ae60', bg: '#dcfce7' },
-                  { key: 'sub', label: '- 减少', color: '#e74c3c', bg: '#fee2e2' },
-                  { key: 'set', label: '= 设定', color: '#f39c12', bg: '#fef3c7' },
-                ].map(t => (
-                  <button
-                    key={t.key}
-                    onClick={() => setBalanceType(t.key)}
-                    style={{
-                      flex: 1, padding: '8px 0', border: '2px solid',
-                      borderColor: balanceType === t.key ? t.color : 'transparent',
-                      background: t.bg, color: t.color,
-                      borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <input
-                  type="number" step="0.01" min="0"
-                  value={balanceAmount}
-                  onChange={e => setBalanceAmount(e.target.value)}
-                  placeholder="输入金额"
-                  style={{ flex: 1 }}
-                />
-                <input
-                  value={balanceReason}
-                  onChange={e => setBalanceReason(e.target.value)}
-                  placeholder="原因/备注（选填）"
-                  style={{ flex: 1 }}
-                />
-                <button
-                  className="btn btn-primary"
-                  style={{ whiteSpace: 'nowrap' }}
-                  disabled={balanceSaving}
-                  onClick={submitBalance}
-                >
-                  {balanceSaving ? '...' : '确认'}
-                </button>
-              </div>
-
-              {/* 简要记录（最近5条） */}
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-light)' }}>最近记录</div>
-                {recordsLoading ? (
-                  <div style={{ fontSize: 12, color: 'var(--text-light)' }}>加载中...</div>
-                ) : records.length === 0 ? (
-                  <div style={{ fontSize: 12, color: 'var(--text-lighter)', padding: '8px 0' }}>暂无记录</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {records.slice(0, 5).map(r => {
-                      const t = TYPE_LABELS[r.type] || { text: r.type, color: '#999' };
-                      return (
-                        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0' }}>
-                          <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', background: t.color + '18', color: t.color }}>{t.text}</span>
-                          <span style={{ fontWeight: 600, color: parseFloat(r.amount) >= 0 ? '#27ae60' : '#e74c3c' }}>
-                            {parseFloat(r.amount) >= 0 ? '+' : ''}{fmt(r.amount)}
-                          </span>
-                          <span style={{ color: 'var(--text-lighter)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {r.reason || ''}
-                          </span>
-                          <span style={{ color: 'var(--text-lighter)', fontSize: 11, whiteSpace: 'nowrap' }}>{(r.created_at || '').slice(0, 10)}</span>
-                        </div>
-                      );
-                    })}
-                    {records.length > 5 && (
-                      <div style={{ fontSize: 11, color: 'var(--text-light)', textAlign: 'center', paddingTop: 4 }}>
-                        还有 {records.length - 5} 条记录，点击「记录」按钮查看全部
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 弹窗：完整金额记录 ── */}
-      {recordsModal && (
-        <div className="modal-overlay" onClick={() => setRecordsModal(null)}>
-          <div className="modal-content" style={{ maxWidth: 750 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>📋 金额记录 — {recordsModal.name}</h3>
-              <button className="close-btn" onClick={() => setRecordsModal(null)}>×</button>
-            </div>
-            <div style={{ padding: '0 24px 24px' }}>
-              <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-light)' }}>当前余额</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: parseFloat(recordsModal.balance || 0) >= 0 ? '#27ae60' : '#e74c3c' }}>
-                  {fmt(recordsModal.balance)}
-                </div>
-              </div>
-              {recordsLoading ? (
-                <div className="loading">加载中...</div>
-              ) : records.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 30, color: 'var(--text-light)' }}>暂无记录</div>
-              ) : (
-                <div style={{ maxHeight: 400, overflow: 'auto' }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>时间</th>
-                        <th>类型</th>
-                        <th>变动</th>
-                        <th>变动前</th>
-                        <th>变动后</th>
-                        <th>原因</th>
-                        <th>操作人</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.map(r => {
-                        const t = TYPE_LABELS[r.type] || { text: r.type, color: '#999' };
-                        return (
-                          <tr key={r.id}>
-                            <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.created_at}</td>
-                            <td>
-                              <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', background: t.color + '18', color: t.color }}>
-                                {t.text}
-                              </span>
-                            </td>
-                            <td style={{ fontWeight: 700, color: parseFloat(r.amount) >= 0 ? '#27ae60' : '#e74c3c' }}>
-                              {parseFloat(r.amount) >= 0 ? '+' : ''}{fmt(r.amount)}
-                            </td>
-                            <td style={{ fontSize: 12 }}>{fmt(r.balance_before)}</td>
-                            <td style={{ fontWeight: 600 }}>{fmt(r.balance_after)}</td>
-                            <td style={{ fontSize: 12, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.reason}>
-                              {r.reason || '-'}
-                            </td>
-                            <td style={{ fontSize: 12 }}>{r.operator_name || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 删除确认 ── */}
+      {/* 删除确认 */}
       {deleteConfirm && (
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>

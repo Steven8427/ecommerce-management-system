@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '../api';
 
 const fmt = v => '¥' + parseFloat(v || 0).toFixed(2);
+const fmtInt = v => parseInt(v || 0).toLocaleString();
 
 const PERIODS = [
   { key: 'today', label: '今日' },
@@ -9,104 +10,21 @@ const PERIODS = [
   { key: 'month', label: '本月' },
   { key: 'year', label: '本年' },
   { key: 'all', label: '全部' },
+  { key: 'custom', label: '自定义' },
 ];
 
-function StatCard({ icon, label, value, color, sub }) {
-  return (
-    <div style={{
-      background: 'var(--white)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: '20px 24px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 16,
-      transition: 'var(--transition)',
-      cursor: 'default',
-    }}>
-      <div style={{
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        background: color || 'var(--bg)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 24,
-        flexShrink: 0,
-      }}>
-        {icon}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 4 }}>{label}</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: -0.5 }}>{value}</div>
-        {sub && <div style={{ fontSize: 12, color: 'var(--text-lighter)', marginTop: 2 }}>{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
-function RankingTable({ title, icon, columns, data, emptyText }) {
-  return (
-    <div style={{
-      background: 'var(--white)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: 24,
-    }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>{icon}</span> {title}
-      </h3>
-      <table className="data-table">
-        <thead>
-          <tr>
-            {columns.map(col => (
-              <th key={col.key}>{col.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {(!data || data.length === 0) ? (
-            <tr>
-              <td colSpan={columns.length} style={{ textAlign: 'center', padding: 30, color: 'var(--text-light)' }}>
-                {emptyText || '暂无数据'}
-              </td>
-            </tr>
-          ) : data.map((item, idx) => (
-            <tr key={item.id || idx}>
-              {columns.map(col => (
-                <td key={col.key} style={col.style}>
-                  {col.render ? col.render(item, idx) : item[col.key]}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function RankBadge({ rank }) {
-  const colors = ['#f6c343', '#a0aec0', '#cd7f32'];
-  const bg = rank < 3 ? colors[rank] : 'var(--bg-dark)';
-  const color = rank < 3 ? '#fff' : 'var(--text-light)';
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: 24,
-      height: 24,
-      borderRadius: '50%',
-      background: bg,
-      color: color,
-      fontSize: 12,
-      fontWeight: 700,
-    }}>
-      {rank + 1}
-    </span>
-  );
+  const medals = ['#f59e0b', '#94a3b8', '#b45309'];
+  if (rank < 3) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 22, height: 22, borderRadius: '50%',
+        background: medals[rank], color: '#fff', fontSize: 11, fontWeight: 700,
+      }}>{rank + 1}</span>
+    );
+  }
+  return <span style={{ display: 'inline-block', width: 22, textAlign: 'center', color: 'var(--text-lighter)', fontSize: 12, fontWeight: 600 }}>{rank + 1}</span>;
 }
 
 export default function StatsPage() {
@@ -114,26 +32,25 @@ export default function StatsPage() {
   const [overview, setOverview] = useState(null);
   const [customerRank, setCustomerRank] = useState([]);
   const [productRank, setProductRank] = useState([]);
-  const [supplierRank, setSupplierRank] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
-  const fetchData = useCallback(async (p) => {
+  const fetchData = useCallback(async (p, start, end) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiGet(`/stats/overview?period=${p}`);
-      if (res.code !== 200) {
-        setError(res.message || '加载失败');
-        return;
-      }
+      let url = `/stats/overview?period=${p}`;
+      if (p === 'custom' && start) url += `&start=${start}`;
+      if (p === 'custom' && end) url += `&end=${end}`;
+      const res = await apiGet(url);
+      if (res.code !== 200) { setError(res.message || '加载失败'); return; }
       const d = res.data || {};
       setOverview(d);
       setCustomerRank(d.customerRank || []);
       setProductRank(d.productRank || []);
-      setSupplierRank(d.supplierRank || []);
     } catch (err) {
-      console.error('Stats fetch error:', err);
       setError('网络错误：' + err.message);
     } finally {
       setLoading(false);
@@ -141,65 +58,58 @@ export default function StatsPage() {
   }, []);
 
   useEffect(() => {
-    fetchData(period);
+    if (period !== 'custom') fetchData(period);
   }, [period, fetchData]);
 
-  const sales = overview?.sales || {};
-  const purchase = overview?.purchase || {};
+  const handleCustomQuery = () => {
+    if (customStart || customEnd) fetchData('custom', customStart, customEnd);
+  };
+
   const counts = overview?.counts || {};
+  const sales = overview?.sales || {};
+  const profit = parseFloat(sales.profit) || 0;
 
-  const customerColumns = [
-    { key: 'rank', label: '排名', render: (_, idx) => <RankBadge rank={idx} /> },
-    { key: 'name', label: '客户', render: (item) => item.name || '-' },
-    { key: 'order_count', label: '订单数', style: { textAlign: 'center' } },
-    { key: 'total_sales', label: '销售额', style: { fontWeight: 600 }, render: (item) => fmt(item.total_sales) },
-    { key: 'total_profit', label: '利润', render: (item) => (
-      <span style={{ color: parseFloat(item.total_profit) >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-        {fmt(item.total_profit)}
-      </span>
-    )},
-  ];
-
-  const productColumns = [
-    { key: 'rank', label: '排名', render: (_, idx) => <RankBadge rank={idx} /> },
-    { key: 'name', label: '商品', render: (item) => item.name || '-' },
-    { key: 'total_qty', label: '销量', style: { textAlign: 'center' } },
-    { key: 'total_sales', label: '销售额', style: { fontWeight: 600 }, render: (item) => fmt(item.total_sales) },
-  ];
-
-  const supplierColumns = [
-    { key: 'rank', label: '排名', render: (_, idx) => <RankBadge rank={idx} /> },
-    { key: 'name', label: '制作厂家', render: (item) => item.name || '-' },
-    { key: 'order_count', label: '订单数', style: { textAlign: 'center' } },
-    { key: 'total_amount', label: '采购总额', style: { fontWeight: 600 }, render: (item) => fmt(item.total_amount) },
-  ];
+  const sectionStyle = {
+    background: 'var(--white)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: '20px 24px',
+  };
 
   return (
     <div>
       {/* Header */}
-      <div className="page-header">
-        <h2>📊 数据统计</h2>
-        <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 'var(--radius-sm)', padding: 3 }}>
-          {PERIODS.map(p => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              style={{
-                padding: '7px 16px',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: 13,
-                fontWeight: period === p.key ? 600 : 400,
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-                background: period === p.key ? 'var(--white)' : 'transparent',
-                color: period === p.key ? 'var(--text)' : 'var(--text-light)',
-                boxShadow: period === p.key ? 'var(--shadow-sm)' : 'none',
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
+      <div className="page-header" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <h2>数据统计</h2>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 3, background: 'var(--bg)', borderRadius: 'var(--radius-sm)', padding: 3 }}>
+            {PERIODS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                style={{
+                  padding: '5px 12px', border: 'none', borderRadius: 'var(--radius-sm)',
+                  fontSize: 13, fontWeight: period === p.key ? 600 : 400, cursor: 'pointer',
+                  transition: 'var(--transition)',
+                  background: period === p.key ? 'var(--white)' : 'transparent',
+                  color: period === p.key ? 'var(--text)' : 'var(--text-light)',
+                  boxShadow: period === p.key ? 'var(--shadow-sm)' : 'none',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13, outline: 'none' }} />
+              <span style={{ color: 'var(--text-lighter)', fontSize: 13 }}>至</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13, outline: 'none' }} />
+              <button className="btn btn-primary" style={{ padding: '5px 14px', fontSize: 13 }} onClick={handleCustomQuery}>查询</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -207,123 +117,112 @@ export default function StatsPage() {
         <div className="loading">加载中...</div>
       ) : error ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
-          <div style={{ fontSize: 18, marginBottom: 12 }}>加载失败</div>
+          <div style={{ fontSize: 16, marginBottom: 12 }}>加载失败</div>
           <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 16 }}>{error}</div>
           <button className="btn btn-primary" onClick={() => fetchData(period)}>重试</button>
         </div>
       ) : (
-        <>
-          {/* 基础统计 */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 32 }}>
-            <StatCard icon="📦" label="商品数量" value={counts.products || 0} color="#e0f2fe" />
-            <StatCard icon="👥" label="客户数量" value={counts.customers || 0} color="#fce7f3" />
-            <StatCard icon="🏭" label="制作厂家" value={counts.suppliers || 0} color="#f0fdf4" />
-            <StatCard
-              icon="💰"
-              label="销售订单量"
-              value={sales.order_count || 0}
-              color="#eef2ff"
-            />
-            <StatCard
-              icon="📥"
-              label="采购订单量"
-              value={purchase.order_count || 0}
-              color="#ede9fe"
-            />
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* ========== 销售（客户清单）========== */}
-          <div style={{
-            background: 'var(--white)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: 24, marginBottom: 24,
-          }}>
-            <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              💰 客户清单（销售统计）
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-              <StatCard
-                icon="💰"
-                label="销售总额"
-                value={fmt(sales.total_sales)}
-                color="#eef2ff"
-                sub={`${sales.order_count || 0} 笔订单`}
-              />
-              <StatCard
-                icon="📈"
-                label="销售利润"
-                value={fmt(sales.total_profit)}
-                color={parseFloat(sales.total_profit) >= 0 ? '#dcfce7' : '#fef2f2'}
-                sub={sales.total_sales > 0 ? `利润率 ${((sales.total_profit / sales.total_sales) * 100).toFixed(1)}%` : '-'}
-              />
-              <StatCard
-                icon="💵"
-                label="销售成本"
-                value={fmt(sales.total_cost)}
-                color="#fef3c7"
-              />
-              <StatCard
-                icon="💳"
-                label="实收金额"
-                value={fmt(sales.total_received)}
-                color="#f0fdf4"
-              />
+          {/* 核心数据 - 一行四个 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+            <div style={{ ...sectionStyle, borderLeft: '3px solid var(--primary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 6 }}>销售总额</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', letterSpacing: -0.5 }}>{fmt(sales.total)}</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: 20 }}>
-              <RankingTable
-                title="客户销售排行"
-                icon="👥"
-                columns={customerColumns}
-                data={customerRank}
-                emptyText="暂无数据"
-              />
-              <RankingTable
-                title="商品销售排行"
-                icon="🎁"
-                columns={productColumns}
-                data={productRank}
-                emptyText="暂无数据"
-              />
+            <div style={{ ...sectionStyle, borderLeft: '3px solid #f59e0b' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 6 }}>成本总计</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706', letterSpacing: -0.5 }}>{fmt(sales.cost)}</div>
+            </div>
+            <div style={{ ...sectionStyle, borderLeft: `3px solid ${profit >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+              <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 6 }}>利润总计</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: profit >= 0 ? 'var(--success)' : 'var(--danger)', letterSpacing: -0.5 }}>{fmt(profit)}</div>
+            </div>
+            <div style={{ ...sectionStyle, borderLeft: '3px solid #8b5cf6' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 6 }}>已收预付</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#7c3aed', letterSpacing: -0.5 }}>{fmt(sales.prepaid)}</div>
             </div>
           </div>
 
-          {/* ========== 采购（合作制造厂家）========== */}
-          <div style={{
-            background: 'var(--white)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: 24,
-          }}>
-            <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              🏭 合作制作厂家（采购统计）
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-              <StatCard
-                icon="📥"
-                label="采购总额"
-                value={fmt(purchase.total_amount)}
-                color="#ede9fe"
-                sub={`${purchase.order_count || 0} 笔采购`}
-              />
-              <StatCard
-                icon="💳"
-                label="实付金额"
-                value={fmt(purchase.total_paid)}
-                color="#fef3c7"
-              />
-              <StatCard
-                icon="📋"
-                label="采购订单数"
-                value={purchase.order_count || 0}
-                color="#e0f2fe"
-              />
+          {/* 订单概览 */}
+          <div style={{ ...sectionStyle }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>订单概览</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+              {[
+                { label: '客户数量', value: fmtInt(counts.customers), color: '#ec4899', bg: '#fdf2f8' },
+                { label: '订单总数', value: fmtInt(counts.orders), color: '#3b82f6', bg: '#eff6ff' },
+                { label: '已完成', value: fmtInt(counts.completed), color: '#10b981', bg: '#ecfdf5' },
+                { label: '进行中', value: fmtInt(counts.pending), color: '#f59e0b', bg: '#fffbeb' },
+              ].map(item => (
+                <div key={item.label} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 16px', borderRadius: 'var(--radius-sm)',
+                  background: item.bg,
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: item.color + '18', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    fontSize: 18, fontWeight: 700, color: item.color,
+                  }}>
+                    {item.value}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-light)' }}>{item.label}</div>
+                </div>
+              ))}
             </div>
-            <RankingTable
-              title="制作厂家采购排行"
-              icon="🏭"
-              columns={supplierColumns}
-              data={supplierRank}
-              emptyText="暂无数据"
-            />
           </div>
-        </>
+
+          {/* 排行榜 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* 客户排行 */}
+            <div style={sectionStyle}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>客户排行</div>
+              {customerRank.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-lighter)', fontSize: 13 }}>暂无数据</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {customerRank.map((item, idx) => (
+                    <div key={item.customer_id || idx} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 8px', borderBottom: idx < customerRank.length - 1 ? '1px solid var(--border-light)' : 'none',
+                      transition: 'var(--transition)', borderRadius: 4,
+                    }}>
+                      <RankBadge rank={idx} />
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{item.name || '-'}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-lighter)', marginRight: 8 }}>{item.order_count}单</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{fmt(item.total_sales)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 商品排行 */}
+            <div style={sectionStyle}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>商品销售排行</div>
+              {productRank.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-lighter)', fontSize: 13 }}>暂无数据</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {productRank.map((item, idx) => (
+                    <div key={item.name || idx} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 8px', borderBottom: idx < productRank.length - 1 ? '1px solid var(--border-light)' : 'none',
+                      transition: 'var(--transition)', borderRadius: 4,
+                    }}>
+                      <RankBadge rank={idx} />
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{item.name || '-'}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-lighter)', marginRight: 8 }}>销量 {item.total_qty}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{fmt(item.total_sales)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
       )}
     </div>
   );

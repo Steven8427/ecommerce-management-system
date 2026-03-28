@@ -1,29 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ProductPage from './ProductPage';
 import CustomerPage from './CustomerPage';
-import SupplierPage from './SupplierPage';
 import SalesOrderPage from './SalesOrderPage';
-import PurchaseOrderPage from './PurchaseOrderPage';
 import StatsPage from './StatsPage';
 import UserManagePage from './UserManagePage';
 import LoginPage from './LoginPage';
 import { apiPost } from '../api';
 
 const ALL_NAV_ITEMS = [
-  { key: 'products', label: '📦 商品模块' },
-  { key: 'customers', label: '👥 客户管理' },
-  { key: 'suppliers', label: '🏭 制作厂家管理' },
-  { key: 'sales', label: '💰 客户清单' },
-  { key: 'purchase', label: '📥 合作制作厂家' },
+  { key: 'sales', label: '📋 客户订单' },
+  { key: 'customers', label: '🏷️ 客户管理' },
   { key: 'stats', label: '📊 数据统计' },
 ];
 
 const PAGE_MAP = {
-  products: ProductPage,
   customers: CustomerPage,
-  suppliers: SupplierPage,
   sales: SalesOrderPage,
-  purchase: PurchaseOrderPage,
   stats: StatsPage,
   users: UserManagePage,
 };
@@ -41,10 +32,10 @@ function App() {
 
   // Filter nav items based on permissions
   const navItems = isAdmin
-    ? [...ALL_NAV_ITEMS, { key: 'users', label: '👤 用户管理' }]
+    ? [...ALL_NAV_ITEMS, { key: 'users', label: '⚙️ 用户管理' }]
     : ALL_NAV_ITEMS.filter(item => permissions[item.key]);
 
-  const defaultTab = navItems.length > 0 ? navItems[0].key : 'products';
+  const defaultTab = navItems.length > 0 ? navItems[0].key : 'sales';
 
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem('activeTab');
@@ -54,6 +45,14 @@ function App() {
   });
 
   const visited = useRef({ [activeTab]: true });
+  const [jumpToOrderId, setJumpToOrderId] = useState(null);
+
+  const navigateToOrder = (orderId) => {
+    visited.current['sales'] = true;
+    localStorage.setItem('activeTab', 'sales');
+    setActiveTab('sales');
+    setJumpToOrderId(orderId);
+  };
 
   // Listen for auth-logout events (from api.js 401 handler)
   useEffect(() => {
@@ -75,7 +74,7 @@ function App() {
     // Reset to first available tab
     const perms = userData.permissions || {};
     const isAdm = userData.role === 'admin';
-    const firstTab = isAdm ? 'products' : ALL_NAV_ITEMS.find(i => perms[i.key])?.key || 'products';
+    const firstTab = isAdm ? 'sales' : ALL_NAV_ITEMS.find(i => perms[i.key])?.key || 'sales';
     visited.current = { [firstTab]: true };
     setActiveTab(firstTab);
   };
@@ -124,20 +123,21 @@ function App() {
               </li>
             ))}
           </ul>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
-            <span style={{ fontSize: 13, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
-              👤 {user.nickname || user.username}
-              {isAdmin && <span style={{ marginLeft: 4, padding: '2px 8px', background: '#eef2ff', color: '#4f46e5', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>管理员</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto', flexShrink: 0 }}>
+            <span style={{ fontSize: 13, color: '#94a3b8', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>👤</span>
+              {user.nickname || user.username}
+              {isAdmin && <span style={{ padding: '2px 8px', background: 'rgba(129,140,248,0.2)', color: '#a5b4fc', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>管理员</span>}
             </span>
             <button
               onClick={handleLogout}
               style={{
-                padding: '5px 14px', background: 'rgba(239,68,68,0.15)', color: '#f87171',
-                border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 12,
-                cursor: 'pointer', transition: 'all 0.2s', fontWeight: 600, whiteSpace: 'nowrap',
+                padding: '5px 14px', background: 'rgba(255,255,255,0.08)', color: '#94a3b8',
+                border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, fontSize: 12,
+                cursor: 'pointer', transition: 'all 0.2s', fontWeight: 500, whiteSpace: 'nowrap',
               }}
-              onMouseEnter={e => { e.target.style.background = 'rgba(239,68,68,0.3)'; e.target.style.color = '#fca5a5'; }}
-              onMouseLeave={e => { e.target.style.background = 'rgba(239,68,68,0.15)'; e.target.style.color = '#f87171'; }}
+              onMouseEnter={e => { e.target.style.background = 'rgba(239,68,68,0.2)'; e.target.style.color = '#fca5a5'; e.target.style.borderColor = 'rgba(239,68,68,0.3)'; }}
+              onMouseLeave={e => { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.color = '#94a3b8'; e.target.style.borderColor = 'rgba(255,255,255,0.12)'; }}
             >
               退出登录
             </button>
@@ -151,7 +151,10 @@ function App() {
           if (!Page) return null;
           return (
             <div key={item.key} style={{ display: activeTab === item.key ? 'block' : 'none' }}>
-              <Page />
+              <Page
+                {...(item.key === 'customers' ? { onNavigateToOrder: navigateToOrder } : {})}
+                {...(item.key === 'sales' ? { jumpToOrderId, onJumpHandled: () => setJumpToOrderId(null) } : {})}
+              />
             </div>
           );
         })}
