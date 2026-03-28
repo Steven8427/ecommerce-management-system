@@ -1,6 +1,6 @@
 # E-Commerce Management System
 
-A full-stack e-commerce back-office management system built with **React 19** and **ThinkPHP 6**, designed for managing products, orders, customers, and suppliers in a streamlined admin dashboard.
+A full-stack e-commerce back-office management system built with **React 19** and **ThinkPHP 6**, designed for managing orders, customers, and business analytics in a streamlined admin dashboard.
 
 ## Features
 
@@ -10,31 +10,31 @@ A full-stack e-commerce back-office management system built with **React 19** an
 - Granular permission management per user
 - Password reset and account status management
 
-### Product Management
-- Full CRUD operations for products
-- Category management with hierarchical organization
-- Image upload support for product photos
-- Stock tracking and price management
-
-### Order Management
-- **Sales Orders** — Create, edit, and track customer sales with line items
-- **Purchase Orders** — Manage supplier purchase orders and restocking
-- Historical pricing lookup for products
+### Sales Order Management
+- Create, edit, and track customer sales orders with detailed line items
+- Item-level fields: product name, materials, dimensions, area, pricing, cost breakdown, images
+- Discount and prepaid amount tracking with automatic profit calculation
+- Print-ready landscape A4 output with QR payment codes and signature areas
+- Order status management (pending / completed)
+- Search and sort by date, amount, status
 
 ### Customer Management
 - Customer database with contact information
 - Customer level / tier system for loyalty tracking
-- Customer-specific sales history
+- **Pending payment indicator** — highlights customers with unpaid orders, expandable to view order-level debt details with direct navigation to the order
 
-### Supplier Management
-- Supplier directory with contact details
-- Supplier-linked purchase order tracking
+### Material Category Management
+- Category management for order item material selection
 
 ### Analytics Dashboard
-- Business overview with key metrics
+- Business overview with key financial metrics (sales, cost, profit, prepaid)
+- Order statistics with status breakdown
 - Customer ranking by purchase volume
 - Product ranking by sales performance
-- Supplier ranking by order volume
+- Flexible time period filter (today, week, month, year, all, custom date range)
+
+### Payment QR Code Management
+- Configurable payment QR codes displayed on printed order sheets
 
 ## Tech Stack
 
@@ -42,7 +42,7 @@ A full-stack e-commerce back-office management system built with **React 19** an
 |----------|-------------------------------------|
 | Frontend | React 19, CSS, Fetch API            |
 | Backend  | ThinkPHP 6 (PHP 7.2+)              |
-| Database | MySQL                               |
+| Database | MySQL 5.7+                          |
 | Auth     | JWT (Bearer Token)                  |
 
 ## Project Structure
@@ -51,24 +51,21 @@ A full-stack e-commerce back-office management system built with **React 19** an
 ├── frontend/                  # React SPA
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── App.js                 # Main app with routing & navbar
+│   │   │   ├── App.js                 # Main app with tab navigation & auth
 │   │   │   ├── LoginPage.jsx          # Authentication page
-│   │   │   ├── ProductPage.jsx        # Product & category management
-│   │   │   ├── CustomerPage.jsx       # Customer & tier management
-│   │   │   ├── SupplierPage.jsx       # Supplier management
-│   │   │   ├── SalesOrderPage.jsx     # Sales order processing
-│   │   │   ├── PurchaseOrderPage.jsx  # Purchase order processing
+│   │   │   ├── SalesOrderPage.jsx     # Sales order CRUD, print, detail view
+│   │   │   ├── CustomerPage.jsx       # Customer & tier management, debt tracking
 │   │   │   ├── StatsPage.jsx          # Analytics dashboard
-│   │   │   ├── UserManagePage.jsx     # User & permission management
-│   │   │   └── Toast.jsx             # Notification component
-│   │   ├── styles/            # CSS stylesheets
-│   │   └── api.js             # Centralized API client
+│   │   │   ├── UserManagePage.jsx     # User & permission management (admin)
+│   │   │   └── Toast.jsx              # Notification component
+│   │   ├── styles/index.css    # Global styles
+│   │   └── api.js              # Centralized API client
 │   └── public/
 │
 ├── backend/                   # ThinkPHP 6 API server
 │   ├── app/
 │   │   ├── controller/        # API controllers
-│   │   ├── model/             # Eloquent-style ORM models
+│   │   ├── model/             # ORM models
 │   │   └── middleware/        # CORS & auth middleware
 │   ├── config/                # App, database & routing config
 │   ├── route/app.php          # RESTful API route definitions
@@ -80,27 +77,31 @@ A full-stack e-commerce back-office management system built with **React 19** an
 
 ## API Endpoints
 
-| Group       | Endpoint                        | Method   | Description               |
-|-------------|---------------------------------|----------|---------------------------|
-| **Auth**    | `/auth/login`                   | POST     | User login                |
-|             | `/auth/register`                | POST     | User registration         |
-|             | `/auth/info`                    | GET      | Get current user info     |
-|             | `/auth/users`                   | GET      | List all users            |
-| **Products**| `/product/list`                 | GET      | List products             |
-|             | `/product/add`                  | POST     | Add product               |
-|             | `/product/update/:id`           | PUT      | Update product            |
-|             | `/product/delete/:id`           | DELETE   | Delete product            |
-| **Customers**| `/customer/list`               | GET      | List customers            |
-|             | `/customer/levels`              | GET      | List customer tiers       |
-| **Suppliers**| `/supplier/list`               | GET      | List suppliers            |
-| **Sales**   | `/sales/list`                   | GET      | List sales orders         |
-|             | `/sales/create`                 | POST     | Create sales order        |
-| **Purchase**| `/purchase/list`                | GET      | List purchase orders      |
-|             | `/purchase/create`              | POST     | Create purchase order     |
-| **Stats**   | `/stats/overview`               | GET      | Dashboard overview        |
-|             | `/stats/customer-ranking`       | GET      | Top customers             |
-|             | `/stats/product-ranking`        | GET      | Top products              |
-| **Upload**  | `/upload/image`                 | POST     | Upload product image      |
+| Group        | Endpoint                        | Method   | Description                |
+|--------------|---------------------------------|----------|----------------------------|
+| **Auth**     | `/auth/login`                   | POST     | User login                 |
+|              | `/auth/register`                | POST     | User registration          |
+|              | `/auth/info`                    | GET      | Get current user info      |
+|              | `/auth/users`                   | GET      | List all users             |
+| **Sales**    | `/sales/list`                   | GET      | List sales orders          |
+|              | `/sales/create`                 | POST     | Create sales order         |
+|              | `/sales/update/:id`             | POST     | Update sales order         |
+|              | `/sales/detail/:id`             | GET      | Get order detail           |
+|              | `/sales/delete/:id`             | DELETE   | Delete sales order         |
+|              | `/sales/status/:id`             | POST     | Update order status        |
+| **Customers**| `/customer/list`                | GET      | List customers             |
+|              | `/customer/add`                 | POST     | Add customer               |
+|              | `/customer/update/:id`          | PUT      | Update customer            |
+|              | `/customer/delete/:id`          | DELETE   | Delete customer            |
+|              | `/customer/debts`               | GET      | Customer pending payments  |
+|              | `/customer/levels`              | GET      | List customer tiers        |
+| **Categories**| `/product/categories`          | GET      | List material categories   |
+|              | `/product/category/add`         | POST     | Add category               |
+|              | `/product/category/delete/:id`  | DELETE   | Delete category            |
+| **Stats**    | `/stats/overview`               | GET      | Dashboard overview         |
+| **QR Codes** | `/qrcode/list`                  | GET      | List payment QR codes      |
+|              | `/qrcode/add`                   | POST     | Add QR code                |
+| **Upload**   | `/upload/image`                 | POST     | Upload image               |
 
 ## Getting Started
 
@@ -141,17 +142,7 @@ A full-stack e-commerce back-office management system built with **React 19** an
    'password' => 'your_password',
    ```
 
-5. **Run database migrations**
-
-   Import the SQL files in the `backend/` directory to set up the required tables:
-   ```
-   create_users_table.sql
-   create_customer_level_table.sql
-   update_product_table.sql
-   update_sales_orders_table.sql
-   ```
-
-6. **Start the application**
+5. **Start the application**
 
    On Windows, simply double-click `start.bat` to launch both the frontend and backend servers.
 
