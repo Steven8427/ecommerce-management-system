@@ -9,8 +9,9 @@ const DEFAULT_UNITS = ['平方米', '米', '块', '个'];
 const createEmptyItem = () => ({
   _id: Date.now() + Math.random(),
   _isNew: true,
+  item_date: (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); })(),
   name: '',
-  unit: '平方米',
+  unit: '',
   width: '',
   height: '',
   quantity: 1,
@@ -694,21 +695,22 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
         border: '1px solid var(--border)', borderRadius: 'var(--radius)',
         background: 'var(--white)', marginBottom: 4, fontSize: 12, overflow: 'visible',
       }}>
+        <div style={{ ...cellStyle, width: 120, flex: 'none', fontSize: 11, color: 'var(--text-light)' }}>{item.item_date ? item.item_date.slice(0, 16) : ''}</div>
         <div style={{ ...cellStyle, width: 28, flex: 'none', fontWeight: 700, color: 'var(--text-light)' }}>{index + 1}</div>
-        <div title={item.name || ''} style={{ ...cellStyle, flex: 2, minWidth: 60, textAlign: 'left', fontWeight: 600 }}>{item.name || '-'}</div>
-        <div title={materialsStr || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{materialsStr || '-'}</div>
-        <div title={item.content || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.content || '-'}</div>
-        <div title={item.width ? String(parseFloat(item.width)) : ''} style={{ ...cellStyle, flex: 1, minWidth: 44 }}>{item.width ? parseFloat(item.width) : '-'}</div>
-        <div title={item.height ? String(parseFloat(item.height)) : ''} style={{ ...cellStyle, flex: 1, minWidth: 44 }}>{item.height ? parseFloat(item.height) : '-'}</div>
+        <div title={item.name || ''} style={{ ...cellStyle, flex: 2, minWidth: 60, textAlign: 'left', fontWeight: 600 }}>{item.name || ''}</div>
+        <div title={materialsStr || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{materialsStr || ''}</div>
+        <div title={item.content || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.content || ''}</div>
+        <div title={item.width ? String(parseFloat(item.width)) : ''} style={{ ...cellStyle, flex: 1, minWidth: 44 }}>{item.width ? parseFloat(item.width) : ''}</div>
+        <div title={item.unit !== '米' && item.height ? String(parseFloat(item.height)) : ''} style={{ ...cellStyle, flex: 1, minWidth: 44 }}>{item.unit !== '米' && item.height ? parseFloat(item.height) : ''}</div>
         <div title={String(item.quantity || 1)} style={{ ...cellStyle, width: 36, flex: 'none' }}>{item.quantity || 1}</div>
-        <div title={area > 0 ? area.toFixed(4) + 'm²' : ''} style={{ ...cellStyle, flex: 1, minWidth: 50 }}>{area > 0 ? area.toFixed(2) + 'm²' : '-'}</div>
+        <div title={area > 0 ? area.toFixed(4) + 'm²' : ''} style={{ ...cellStyle, flex: 1, minWidth: 50 }}>{area > 0 ? area.toFixed(2) + 'm²' : ''}</div>
         <div
           ref={costPopRef}
           title={costPrice > 0 ? '成本: ¥' + costPrice.toFixed(2) + ' (点击查看明细)' : ''}
           style={{ ...cellStyle, flex: 1, minWidth: 52, color: '#d97706', position: 'relative', cursor: costPrice > 0 ? 'pointer' : 'default', overflow: 'visible' }}
           onClick={() => { if (costPrice > 0) setShowCostPopover(!showCostPopover); }}
         >
-          {costPrice > 0 ? '¥' + costPrice.toFixed(2) : '-'}
+          {costPrice > 0 ? '¥' + costPrice.toFixed(2) : ''}
           {showCostPopover && (item.cost_details || []).length > 0 && (
             <div
               onClick={e => e.stopPropagation()}
@@ -734,16 +736,14 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
             </div>
           )}
         </div>
-        <div title={parseFloat(item.unit_price) ? '¥' + parseFloat(item.unit_price) : ''} style={{ ...cellStyle, flex: 1, minWidth: 46 }}>{parseFloat(item.unit_price) ? '¥' + parseFloat(item.unit_price) : '-'}</div>
-        <div title={item.unit || ''} style={{ ...cellStyle, width: 56, flex: 'none' }}>{item.unit || '-'}</div>
+        <div title={parseFloat(item.unit_price) ? '¥' + parseFloat(item.unit_price) : ''} style={{ ...cellStyle, flex: 1, minWidth: 46 }}>{parseFloat(item.unit_price) ? '¥' + parseFloat(item.unit_price) : ''}</div>
+        <div title={item.unit || ''} style={{ ...cellStyle, width: 56, flex: 'none' }}>{item.unit || ''}</div>
         <div title={fmt(total)} style={{ ...cellStyle, flex: 1, minWidth: 52, textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}>{fmt(total)}</div>
-        <div title={item.remark || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.remark || '-'}</div>
+        <div title={item.remark || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.remark || ''}</div>
         <div style={{ ...cellStyle, width: 48, flex: 'none', padding: '6px 4px' }}>
           {item.image ? (
             <img src={item.image} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
-          ) : (
-            <span style={{ color: 'var(--text-lighter)', fontSize: 11 }}>-</span>
-          )}
+          ) : null}
         </div>
         <div style={{ display: 'flex', gap: 4, padding: '6px 4px', flexShrink: 0 }}>
           <button
@@ -758,7 +758,7 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
           </button>
           <button
             type="button"
-            onClick={() => onRemove(item._id)}
+            onClick={() => { if (window.confirm('确定删除该项目吗？')) onRemove(item._id); }}
             style={{
               padding: '3px 8px', border: 'none', borderRadius: 4,
               background: '#fef2f2', cursor: 'pointer', fontSize: 12, color: 'var(--danger)', fontWeight: 500,
@@ -779,6 +779,12 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
     }}>
       {/* Row 1: Name + Unit + Done/Delete */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+        <input
+          type="datetime-local"
+          value={item.item_date ? item.item_date.replace(' ', 'T').slice(0, 16) : ''}
+          onChange={e => update('item_date', e.target.value.replace('T', ' '))}
+          style={{ ...inputStyle, width: 170, fontSize: 13, flexShrink: 0 }}
+        />
         <span style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)',
@@ -820,42 +826,38 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
         </button>
       </div>
 
-      {/* Row 2: Dimensions */}
+      {/* Row 2: Dimensions - 根据单位动态显示 */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
-          <span style={{ color: 'var(--text-light)' }}>宽(m):</span>
-          <input
-            type="number"
-            step="0.01"
-            value={item.width}
-            onChange={e => update('width', e.target.value)}
-            style={{ ...inputStyle, width: 80 }}
-          />
-        </label>
-        <span style={{ color: 'var(--text-lighter)' }}>×</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
-          <span style={{ color: 'var(--text-light)' }}>高(m):</span>
-          <input
-            type="number"
-            step="0.01"
-            value={item.height}
-            onChange={e => update('height', e.target.value)}
-            style={{ ...inputStyle, width: 80 }}
-          />
-        </label>
+        {item.unit === '米' ? (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+            <span style={{ color: 'var(--text-light)' }}>长度(m):</span>
+            <input type="number" step="0.01" value={item.width} onChange={e => update('width', e.target.value)} style={{ ...inputStyle, width: 80 }} />
+          </label>
+        ) : (
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+              <span style={{ color: 'var(--text-light)' }}>宽(m):</span>
+              <input type="number" step="0.01" value={item.width} onChange={e => update('width', e.target.value)} style={{ ...inputStyle, width: 80 }} />
+            </label>
+            <span style={{ color: 'var(--text-lighter)' }}>×</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+              <span style={{ color: 'var(--text-light)' }}>高(m):</span>
+              <input type="number" step="0.01" value={item.height} onChange={e => update('height', e.target.value)} style={{ ...inputStyle, width: 80 }} />
+            </label>
+          </>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
           <span style={{ color: 'var(--text-light)' }}>数量:</span>
-          <input
-            type="number"
-            min="1"
-            value={item.quantity}
-            onChange={e => update('quantity', e.target.value)}
-            style={{ ...inputStyle, width: 70 }}
-          />
+          <input type="number" min="1" value={item.quantity} onChange={e => update('quantity', e.target.value)} style={{ ...inputStyle, width: 70 }} />
         </label>
-        {area > 0 && (
+        {item.unit === '平方米' && area > 0 && (
           <span style={{ fontSize: 13, color: 'var(--info)', fontWeight: 600 }}>
             面积: {area.toFixed(2)} m²
+          </span>
+        )}
+        {item.unit === '米' && parseFloat(item.width) > 0 && (
+          <span style={{ fontSize: 13, color: 'var(--info)', fontWeight: 600 }}>
+            {parseFloat(item.width)}m × {parseInt(item.quantity) || 1} = {(parseFloat(item.width) * (parseInt(item.quantity) || 1)).toFixed(2)}m
           </span>
         )}
       </div>
@@ -875,9 +877,6 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
         </label>
         <span style={{ fontSize: 13, color: 'var(--text-light)' }}>
           计算金额: <strong style={{ color: 'var(--primary)' }}>{fmt(amount)}</strong>
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>
-          = {fmt(amount)}
         </span>
       </div>
 
@@ -1004,7 +1003,7 @@ function PrintPreviewModal({ order, onClose }) {
 <html><head><meta charset="utf-8"/><title>客户清单 #${order.id}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;padding:16px 24px;color:#222;font-size:12px;min-height:100vh;display:flex;flex-direction:column}
+body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;padding:16px 12px;color:#222;font-size:12px;min-height:100vh;display:flex;flex-direction:column}
 .content{flex:1}
 h2{text-align:center;font-size:18px;margin-bottom:2px}
 .sub{text-align:center;color:#666;font-size:11px;margin-bottom:8px}
@@ -1025,7 +1024,7 @@ td.left{text-align:left}
 .sign-line span{font-size:12px;font-weight:600;white-space:nowrap}
 .sign-line div{border-bottom:1px solid #333;width:120px}
 @page{size:A4 landscape;margin:8mm}
-@media print{body{padding:8px 16px}}
+@media print{body{padding:8px 8px}}
 </style></head><body>
 <div class="content">
 <h2>视觉创印广告物料制作清单</h2>
@@ -1034,8 +1033,8 @@ td.left{text-align:left}
 <div><strong>客户：</strong>${order.customer?.name || '-'}　　<strong>电话：</strong>${order.customer?.phone || '-'}　　<strong>地址：</strong>${order.customer?.address || '-'}</div>
 <div><strong>日期：</strong>${order.order_date || '-'}</div>
 </div>
-<table><thead><tr><th>序号</th><th>商品名称</th><th>耗材</th><th>制作内容</th><th>宽(m)</th><th>高(m)</th><th>数量</th><th>面积</th><th>单价</th><th>单位</th><th>金额</th><th>备注</th><th>图样</th></tr></thead><tbody>
-${items.length === 0 ? '<tr><td colspan="13" style="text-align:center;color:#aaa;padding:16px">无明细</td></tr>' : items.map((item, idx) => {
+<table><thead><tr><th>日期</th><th>序号</th><th>商品名称</th><th>耗材</th><th>制作内容</th><th>宽(m)</th><th>高(m)</th><th>数量</th><th>面积</th><th>单价</th><th>单位</th><th>金额</th><th>备注</th><th>图样</th></tr></thead><tbody>
+${items.length === 0 ? '<tr><td colspan="14" style="text-align:center;color:#aaa;padding:16px">无明细</td></tr>' : items.map((item, idx) => {
   const w = parseFloat(item.width) || 0;
   const h = parseFloat(item.height) || 0;
   const area = item.unit === '平方米' ? (w * h).toFixed(2) + 'm²' : '-';
@@ -1045,6 +1044,7 @@ ${items.length === 0 ? '<tr><td colspan="13" style="text-align:center;color:#aaa
   const mats = (() => { try { const m = typeof item.materials === 'string' ? JSON.parse(item.materials) : (item.materials || []); return m.map(x => x.name || x).filter(Boolean).join(', '); } catch { return ''; } })();
   const imgSrc = item.image ? (item.image.startsWith('http') ? item.image : window.location.origin + (item.image.startsWith('/') ? '' : '/') + item.image) : '';
   return `<tr>
+    <td style="font-size:10px;white-space:nowrap;padding:4px 3px">${item.item_date ? item.item_date.slice(0, 16) : '-'}</td>
     <td>${idx+1}</td>
     <td class="left">${item.name||'-'}</td>
     <td class="left">${mats||'-'}</td>
@@ -1064,14 +1064,14 @@ ${items.length === 0 ? '<tr><td colspan="13" style="text-align:center;color:#aaa
 <div class="summary-row">
 <div class="summary-item"><span>项目合计：</span><span style="font-weight:600">${fmt(total)}</span></div>
 ${discountAmt > 0 ? `<div class="summary-item"><span style="color:#f39c12">优惠：</span><span style="color:#f39c12;font-weight:600">-${fmt(discountAmt)}</span></div>` : ''}
-${prepaidAmt > 0 ? `<div class="summary-item"><span>预付：</span><span style="font-weight:600">${fmt(prepaidAmt)}</span></div>` : ''}
+${prepaidAmt > 0 ? `<div class="summary-item"><span>余额抵扣：</span><span style="font-weight:600">${fmt(prepaidAmt)}</span></div>` : ''}
 <div class="summary-item highlight"><span>实收总计：</span><span>${fmt(actual)}</span></div>
 </div>
 ${notes ? `<div style="margin-bottom:10px;font-size:12px"><strong>备注：</strong>${notes}</div>` : ''}
 </div>
 <div class="bottom-section">
 <div style="display:flex;gap:16px;align-items:flex-start">
-${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:10px;font-weight:600;margin-bottom:3px">扫码支付</div><img src="${qr.url}" style="width:120px;height:120px;object-fit:contain;border:1px solid #ddd;border-radius:3px"/><p style="font-size:10px;color:#666;margin-top:2px">${qr.name}</p></div>`).join('') : ''}
+${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:center"><div style="font-size:10px;font-weight:600;margin-bottom:3px">扫码支付</div><img src="${qr.url}" style="max-width:140px;max-height:180px;object-fit:contain;border:1px solid #ddd;border-radius:3px"/><p style="font-size:10px;color:#666;margin-top:2px">${qr.name}</p></div>`).join('') : ''}
 </div>
 <div class="sign-area">
 <div class="sign-line"><span>验收人：</span><div></div></div>
@@ -1139,6 +1139,7 @@ ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:c
             <table className="print-table" style={{ fontSize: 13 }}>
               <thead>
                 <tr>
+                  <th>日期</th>
                   <th>序号</th>
                   <th>商品名称</th>
                   <th>耗材</th>
@@ -1156,7 +1157,7 @@ ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:c
               </thead>
               <tbody>
                 {items.length === 0 ? (
-                  <tr><td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-light)' }}>无明细</td></tr>
+                  <tr><td colSpan={14} style={{ textAlign: 'center', color: 'var(--text-light)' }}>无明细</td></tr>
                 ) : items.map((item, idx) => {
                   const w = parseFloat(item.width) || 0;
                   const h = parseFloat(item.height) || 0;
@@ -1168,6 +1169,7 @@ ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:c
                   const imgSrc = item.image ? (item.image.startsWith('http') ? item.image : `${window.location.origin}${item.image.startsWith('/') ? '' : '/'}${item.image}`) : '';
                   return (
                     <tr key={idx}>
+                      <td style={{ fontSize: 12 }}>{item.item_date ? item.item_date.slice(0, 16) : '-'}</td>
                       <td>{idx + 1}</td>
                       <td>{item.name || '-'}</td>
                       <td>{mats || '-'}</td>
@@ -1191,7 +1193,7 @@ ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:c
           <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '14px 20px', fontSize: 14, marginBottom: 16, display: 'flex', justifyContent: 'flex-end', gap: 24, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <div><span style={{ color: 'var(--text-light)' }}>项目合计：</span><span style={{ fontWeight: 700 }}>{fmt(total)}</span></div>
             {discountAmt > 0 && <div><span style={{ color: '#f39c12' }}>优惠：</span><span style={{ color: '#f39c12', fontWeight: 600 }}>-{fmt(discountAmt)}</span></div>}
-            {parseFloat(order.prepaid_amount) > 0 && <div><span style={{ color: 'var(--text-light)' }}>预付：</span><span style={{ fontWeight: 600 }}>{fmt(order.prepaid_amount)}</span></div>}
+            {parseFloat(order.prepaid_amount) > 0 && <div><span style={{ color: 'var(--text-light)' }}>余额抵扣：</span><span style={{ fontWeight: 600 }}>{fmt(order.prepaid_amount)}</span></div>}
             <div><span style={{ color: 'var(--success)', fontWeight: 700, fontSize: 16 }}>实收总计：{fmt(actual)}</span></div>
           </div>
 
@@ -1229,7 +1231,7 @@ ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:c
 // ============================================================================
 // Create / Edit View
 // ============================================================================
-function OrderFormView({ editId, onBack }) {
+function OrderFormView({ editId, onBack, isActive }) {
   const showToast = useToast();
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -1237,7 +1239,7 @@ function OrderFormView({ editId, onBack }) {
   const [customerId, setCustomerId] = useState('');
   const [notes, setNotes] = useState('');
   const [discountAmount, setDiscountAmount] = useState('');
-  const [prepaidAmount, setPrepaidAmount] = useState('');
+  // oldPrepaid removed - balance operations now handled via "余额完成" button only
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1249,6 +1251,8 @@ function OrderFormView({ editId, onBack }) {
     apiGet('/customer/list').then(j => setCustomers(j.data || j || [])).catch(() => {});
   }, []);
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
+  // 切换回此页面时刷新客户列表（含最新余额）
+  useEffect(() => { if (isActive) fetchCustomers(); }, [isActive, fetchCustomers]);
 
   const fetchCategories = useCallback(() => {
     apiGet('/product/categories').then(j => setCategories(j.data || j || [])).catch(() => {});
@@ -1272,10 +1276,11 @@ function OrderFormView({ editId, onBack }) {
         setCustomerId(detail.customer_id || '');
         setNotes(detail.description || detail.notes || '');
         setDiscountAmount(detail.discount_amount || '');
-        setPrepaidAmount(detail.prepaid_amount || '');
+        // oldPrepaid no longer needed
         if (detail.items && detail.items.length > 0) {
           setItems(detail.items.map(i => ({
             _id: (i.id || Date.now()) + Math.random(),
+            item_date: i.item_date || '',
             name: i.name || '',
             unit: i.unit || '平方米',
             width: i.width || '',
@@ -1306,8 +1311,10 @@ function OrderFormView({ editId, onBack }) {
   const amountTotal = items.reduce((sum, i) => sum + getItemTotal(i), 0);
   const discount = parseFloat(discountAmount) || 0;
   const actualTotal = amountTotal - discount;
-  const prepaid = parseFloat(prepaidAmount) || 0;
-  const pendingAmount = actualTotal - prepaid;
+  const selectedCustomer = customers.find(c => String(c.id) === String(customerId));
+  const customerBalance = parseFloat(selectedCustomer?.balance) || 0;
+  const balanceDeduct = Math.min(customerBalance, Math.max(actualTotal, 0));
+  const pendingAmount = actualTotal - balanceDeduct;
   const profit = actualTotal - costTotal;
 
   const addItem = () => {
@@ -1369,10 +1376,9 @@ function OrderFormView({ editId, onBack }) {
         total_amount: amountTotal,
         cost_total: costTotal,
         profit: profit,
-        prepaid_amount: prepaid,
-        status: pendingAmount <= 0 && prepaid > 0 ? 'completed' : 'pending',
         image: '',
         items: items.map(i => ({
+          item_date: i.item_date || '',
           name: i.name,
           unit: i.unit,
           width: parseFloat(i.width) || 0,
@@ -1393,7 +1399,8 @@ function OrderFormView({ editId, onBack }) {
       const url = editId ? `/sales/update/${editId}` : '/sales/create';
       const res = await apiPost(url, payload);
       if (res.code === 200 || res.id || res.data) {
-        showToast('success', '成功', editId ? '订单已更新' : '订单已创建');
+        const msg = res.message || (editId ? '订单已更新' : '订单已创建');
+        showToast('success', '成功', msg);
         setDirty(false);
         onBack();
       } else {
@@ -1457,6 +1464,7 @@ function OrderFormView({ editId, onBack }) {
                   fontWeight: 600, color: 'var(--text-light)', marginBottom: 0,
                   border: '1px solid var(--border)', borderBottom: 'none',
                 }}>
+                  <div style={{ width: 120, flex: 'none', padding: '8px 4px', textAlign: 'center' }}>日期</div>
                   <div style={{ width: 28, flex: 'none', padding: '8px 4px', textAlign: 'center' }}>#</div>
                   <div style={{ flex: 2, minWidth: 60, padding: '8px 4px' }}>商品名称</div>
                   <div style={{ flex: 1.5, minWidth: 50, padding: '8px 4px' }}>耗材</div>
@@ -1550,9 +1558,9 @@ function OrderFormView({ editId, onBack }) {
                   <div key={qr.id} style={{
                     textAlign: 'center', padding: 10, border: '1px solid var(--border)',
                     borderRadius: 'var(--radius)', background: qr.enabled ? '#f0fdf4' : '#fafafa',
-                    opacity: qr.enabled ? 1 : 0.5, width: 110,
+                    opacity: qr.enabled ? 1 : 0.5, width: 120,
                   }}>
-                    <img src={qr.url} alt={qr.name} style={{ width: 80, height: 80, objectFit: 'contain', borderRadius: 4, marginBottom: 4 }} />
+                    <img src={qr.url} alt={qr.name} style={{ width: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 4, marginBottom: 4 }} />
                     <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{qr.name}</div>
                     <div style={{ fontSize: 11, color: qr.enabled ? 'var(--success)' : 'var(--text-light)' }}>
                       {qr.enabled ? '✓ 打印时显示' : '✗ 不显示'}
@@ -1579,17 +1587,6 @@ function OrderFormView({ editId, onBack }) {
               <input type="text" readOnly value={fmt(amountTotal)} style={{ background: '#f7fafc' }} />
             </div>
             <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
-              <label>预计利润</label>
-              <input type="text" readOnly value={fmt(profit)}
-                style={{
-                  background: profit >= 0 ? '#d1fae5' : '#fef2f2',
-                  borderColor: profit >= 0 ? '#10b981' : '#ef4444',
-                  color: profit >= 0 ? '#065f46' : '#b91c1c',
-                  fontWeight: 600,
-                }}
-              />
-            </div>
-            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
               <label>优惠金额</label>
               <input
                 type="number"
@@ -1601,15 +1598,24 @@ function OrderFormView({ editId, onBack }) {
               />
             </div>
             <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
-              <label>预付金额</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="客户预付金额"
-                value={prepaidAmount}
-                onChange={e => { setPrepaidAmount(e.target.value); setDirty(true); }}
+              <label>预计利润</label>
+              <input type="text" readOnly value={fmt(profit)}
+                style={{
+                  background: profit >= 0 ? '#d1fae5' : '#fef2f2',
+                  borderColor: profit >= 0 ? '#10b981' : '#ef4444',
+                  color: profit >= 0 ? '#065f46' : '#b91c1c',
+                  fontWeight: 600,
+                }}
               />
+            </div>
+            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+              <label>客户余额</label>
+              <input type="text" readOnly value={fmt(customerBalance)}
+                style={{ background: customerBalance > 0 ? '#eef2ff' : '#f7fafc', fontWeight: 600, color: customerBalance > 0 ? 'var(--primary)' : 'var(--text-lighter)' }}
+              />
+              {balanceDeduct > 0 && (
+                <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, fontWeight: 600 }}>提交时自动抵扣 {fmt(balanceDeduct)}</div>
+              )}
             </div>
             <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
               <label>待付金额</label>
@@ -1621,9 +1627,6 @@ function OrderFormView({ editId, onBack }) {
                   color: pendingAmount > 0 ? '#b91c1c' : '#065f46',
                 }}
               />
-              {pendingAmount <= 0 && prepaid > 0 && (
-                <div style={{ fontSize: 11, color: '#10b981', marginTop: 4 }}>已付清</div>
-              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 16px', background: 'var(--bg)', borderRadius: 8, minWidth: 180 }}>
               <span style={{ fontSize: 13, color: 'var(--text-light)' }}>实收总计</span>
@@ -1704,6 +1707,13 @@ function OrderListView({ onNew, onEdit, onPrint }) {
       default: return 0;
     }
   });
+
+  const PAGE_SIZE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  // Reset page when search/sort changes
+  useEffect(() => { setCurrentPage(1); }, [search, sortKey]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const hasAnyDiscount = filtered.some(o => parseFloat(o.discount_amount) > 0);
 
@@ -1787,7 +1797,7 @@ function OrderListView({ onNew, onEdit, onPrint }) {
                   </div>
                 </td>
               </tr>
-            ) : filtered.map(order => {
+            ) : paged.map(order => {
               const costVal = parseFloat(order.cost_total) || 0;
               const profitVal = parseFloat(order.profit) || 0;
               const totalAmt = parseFloat(order.actual_amount || order.total_amount) || 0;
@@ -1827,7 +1837,7 @@ function OrderListView({ onNew, onEdit, onPrint }) {
                           try {
                             const res = await apiPost(`/sales/status/${order.id}`, { status: newStatus });
                             if (res.code === 200) {
-                              showToast('success', '成功', isCompleted ? '已取消完成' : '订单已完成');
+                              showToast('success', '成功', res.message || (isCompleted ? '已取消完成' : '订单已完成'));
                               fetchOrders();
                             }
                           } catch (err) {
@@ -1837,6 +1847,27 @@ function OrderListView({ onNew, onEdit, onPrint }) {
                       >
                         {isCompleted ? '取消完成' : '完成'}
                       </button>
+                      {!isCompleted && (
+                        <button
+                          className="btn"
+                          style={{ padding: '4px 10px', fontSize: 12, background: '#7c3aed', color: '#fff', border: 'none' }}
+                          onClick={async () => {
+                            try {
+                              const res = await apiPost(`/sales/balance-complete/${order.id}`);
+                              if (res.code === 200) {
+                                showToast('success', '成功', res.message);
+                                fetchOrders();
+                              } else {
+                                showToast('error', '操作失败', res.message);
+                              }
+                            } catch (err) {
+                              showToast('error', '操作失败', err.message);
+                            }
+                          }}
+                        >
+                          余额完成
+                        </button>
+                      )}
                       <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onEdit(order.id)}>编辑</button>
                       <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onPrint(order.id)}>查看/打印</button>
                       <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleDelete(order.id)}>删除</button>
@@ -1848,6 +1879,35 @@ function OrderListView({ onNew, onEdit, onPrint }) {
           </tbody>
         </table>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, padding: '16px 0', flexWrap: 'wrap' }}>
+          <button className="btn" style={{ padding: '4px 12px', fontSize: 12 }} disabled={currentPage <= 1} onClick={() => setCurrentPage(1)}>首页</button>
+          <button className="btn" style={{ padding: '4px 12px', fontSize: 12 }} disabled={currentPage <= 1} onClick={() => setCurrentPage(p => p - 1)}>上一页</button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+            .reduce((acc, p, idx, arr) => {
+              if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+              acc.push(p);
+              return acc;
+            }, [])
+            .map((p, i) =>
+              p === '...' ? <span key={`e${i}`} style={{ color: 'var(--text-lighter)', fontSize: 12 }}>...</span> :
+              <button key={p} className="btn" style={{ padding: '4px 10px', fontSize: 12, fontWeight: p === currentPage ? 700 : 400, background: p === currentPage ? 'var(--primary)' : undefined, color: p === currentPage ? '#fff' : undefined }} onClick={() => setCurrentPage(p)}>{p}</button>
+            )}
+          <button className="btn" style={{ padding: '4px 12px', fontSize: 12 }} disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)}>下一页</button>
+          <button className="btn" style={{ padding: '4px 12px', fontSize: 12 }} disabled={currentPage >= totalPages} onClick={() => setCurrentPage(totalPages)}>末页</button>
+          <span style={{ fontSize: 12, color: 'var(--text-light)', marginLeft: 8 }}>共 {filtered.length} 条</span>
+          <span style={{ fontSize: 12, color: 'var(--text-light)', marginLeft: 4 }}>跳至</span>
+          <input
+            type="number" min={1} max={totalPages}
+            style={{ width: 48, padding: '3px 6px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', textAlign: 'center', outline: 'none' }}
+            onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(e.target.value); if (v >= 1 && v <= totalPages) { setCurrentPage(v); e.target.value = ''; } } }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>页</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1855,7 +1915,7 @@ function OrderListView({ onNew, onEdit, onPrint }) {
 // ============================================================================
 // Main Component
 // ============================================================================
-export default function SalesOrderPage({ jumpToOrderId, onJumpHandled }) {
+export default function SalesOrderPage({ jumpToOrderId, onJumpHandled, isActive }) {
   const [view, setView] = useState('list');
   const [editId, setEditId] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
@@ -1887,7 +1947,7 @@ export default function SalesOrderPage({ jumpToOrderId, onJumpHandled }) {
   return (
     <>
       {view === 'list' && <OrderListView onNew={handleNew} onEdit={handleEdit} onPrint={handlePrint} />}
-      {view === 'form' && <OrderFormView editId={editId} onBack={handleBackToList} />}
+      {view === 'form' && <OrderFormView editId={editId} onBack={handleBackToList} isActive={isActive} />}
       {printOrder && <PrintPreviewModal order={printOrder} onClose={() => setPrintOrder(null)} />}
     </>
   );

@@ -31,6 +31,8 @@ Route::group('customer', function () {
     Route::put('update/:id', 'Customer/update');
     Route::delete('delete/:id', 'Customer/delete');
     Route::get('debts', 'Customer/debts');
+    Route::post('balance/:id', 'Customer/balanceAdjust');
+    Route::get('balance-records/:id', 'Customer/balanceRecords');
     Route::get('levels', 'Customer/levels');
     Route::post('level/add', 'Customer/addLevel');
     Route::put('level/update/:id', 'Customer/updateLevel');
@@ -45,6 +47,7 @@ Route::group('sales', function () {
     Route::get('detail/:id', 'SalesOrder/detail');
     Route::delete('delete/:id', 'SalesOrder/delete');
     Route::post('status/:id', 'SalesOrder/updateStatus');
+    Route::post('balance-complete/:id', 'SalesOrder/balanceComplete');
 });
 
 // 数据统计 API

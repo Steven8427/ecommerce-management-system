@@ -62,9 +62,22 @@ class Stats extends BaseController
         }
         $customerRank = $customerRankQuery
             ->order('total_sales', 'desc')
-            ->limit(10)
             ->select()
             ->toArray();
+
+        // 订单列表（已完成 + 进行中）
+        $orderListBase = Db::name('sales_orders')
+            ->alias('o')
+            ->leftJoin('customers c', 'o.customer_id = c.id')
+            ->field('o.id, c.name as customer_name, o.total_amount, o.discount_amount, o.cost_total, o.profit, o.prepaid_amount, o.status, o.order_date');
+        if ($startDate) {
+            $orderListBase = $orderListBase->where('o.order_date', '>=', $startDate . ' 00:00:00');
+        }
+        if ($endDate) {
+            $orderListBase = $orderListBase->where('o.order_date', '<=', $endDate . ' 23:59:59');
+        }
+        $completedOrders = (clone $orderListBase)->where('o.status', 'completed')->order('o.order_date', 'desc')->select()->toArray();
+        $pendingOrders = (clone $orderListBase)->where('o.status', '<>', 'completed')->order('o.order_date', 'desc')->select()->toArray();
 
         // 商品排行（按销售额，从 sales_order_items）
         $productRankQuery = Db::name('sales_order_items')
@@ -81,7 +94,6 @@ class Stats extends BaseController
         }
         $productRank = $productRankQuery
             ->order('total_sales', 'desc')
-            ->limit(10)
             ->select()
             ->toArray();
 
@@ -102,6 +114,8 @@ class Stats extends BaseController
                 ],
                 'customerRank' => $customerRank,
                 'productRank'  => $productRank,
+                'completedOrders' => $completedOrders,
+                'pendingOrders' => $pendingOrders,
                 'period' => $period,
             ]
         ]);

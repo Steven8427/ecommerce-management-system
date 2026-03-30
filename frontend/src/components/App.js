@@ -152,6 +152,7 @@ function App() {
           return (
             <div key={item.key} style={{ display: activeTab === item.key ? 'block' : 'none' }}>
               <Page
+                isActive={activeTab === item.key}
                 {...(item.key === 'customers' ? { onNavigateToOrder: navigateToOrder } : {})}
                 {...(item.key === 'sales' ? { jumpToOrderId, onJumpHandled: () => setJumpToOrderId(null) } : {})}
               />
