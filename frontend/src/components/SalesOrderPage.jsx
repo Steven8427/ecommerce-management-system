@@ -659,6 +659,7 @@ function UnitComboBox({ value, onChange, style }) {
 function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, defaultEditing }) {
   const [editing, setEditing] = useState(defaultEditing);
   const [showCostPopover, setShowCostPopover] = useState(false);
+  const [previewImg, setPreviewImg] = useState(null);
   const costPopRef = useRef(null);
   const area = calcArea(item);
   const amount = calcAmount(item);
@@ -742,7 +743,8 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
         <div title={item.remark || ''} style={{ ...cellStyle, flex: 1.5, minWidth: 50, textAlign: 'left', color: 'var(--text-light)' }}>{item.remark || ''}</div>
         <div style={{ ...cellStyle, width: 48, flex: 'none', padding: '6px 4px' }}>
           {item.image ? (
-            <img src={item.image} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
+            <img src={item.image} alt="" onClick={() => setPreviewImg(item.image)}
+              style={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer' }} />
           ) : null}
         </div>
         <div style={{ display: 'flex', gap: 4, padding: '6px 4px', flexShrink: 0 }}>
@@ -767,6 +769,14 @@ function ItemCard({ item, index, categories, onUpdate, onRemove, onImageUpload, 
             删除
           </button>
         </div>
+        {previewImg && (
+          <div onClick={() => setPreviewImg(null)} style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          }}>
+            <img src={previewImg} alt="" style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }} />
+          </div>
+        )}
       </div>
     );
   }
@@ -1014,7 +1024,7 @@ table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px}
 th{background:#f0f1f5;padding:5px 6px;text-align:center;font-weight:700;border:1px solid #ccc;white-space:nowrap}
 td{padding:4px 6px;border:1px solid #ddd;text-align:center}
 td.left{text-align:left}
-.item-img{width:36px;height:36px;object-fit:cover;border-radius:3px}
+.item-img{max-width:180px;max-height:140px;object-fit:contain;border-radius:3px}
 .summary-row{display:flex;justify-content:flex-end;gap:24px;margin-bottom:8px;font-size:12px;flex-wrap:wrap}
 .summary-item{display:flex;gap:4px;align-items:baseline}
 .summary-item.highlight{font-weight:700;font-size:14px;color:#1a7f37}
@@ -1182,7 +1192,7 @@ ${enabledQRCodes.length > 0 ? enabledQRCodes.map(qr => `<div style="text-align:c
                       <td>{item.unit || '-'}</td>
                       <td style={{ fontWeight: 600 }}>{fmt(finalAmt)}</td>
                       <td style={{ fontSize: 12 }}>{item.remark || ''}</td>
-                      <td>{imgSrc ? <img src={imgSrc} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 3 }} /> : '-'}</td>
+                      <td>{imgSrc ? <img src={imgSrc} alt="" style={{ maxWidth: 60, maxHeight: 50, objectFit: 'contain', borderRadius: 3 }} /> : '-'}</td>
                     </tr>
                   );
                 })}
