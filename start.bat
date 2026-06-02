@@ -8,7 +8,7 @@ echo ============================================
 echo.
 
 echo [1/2] 启动后端 PHP 服务器 (端口 106)...
-start "HS-Backend" cmd /k "title HS-Backend && color 0A && echo 后端服务器启动中... && "D:\phpEnv\phpEnv\php\php-7.4\php.exe" -S 127.0.0.1:106 -t "%~dp0backend\public" "%~dp0backend\public\router.php""
+start "HS-Backend" cmd /k "title HS-Backend && color 0A && echo 后端服务器启动中... && "C:\Users\steve\phpEnv\php\php-7.4\php.exe" -S 127.0.0.1:106 -t "%~dp0backend\public" "%~dp0backend\public\router.php""
 
 timeout /t 2 /nobreak >nul
 
